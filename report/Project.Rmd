@@ -1,0 +1,2127 @@
+---
+title: "Comparative Analysis of Estimation Methods for Jump and Tail-Risk Models in Financial Returns"
+author: "Kapil Chandak"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  pdf_document:
+    toc: true
+    number_sections: true
+    fig_caption: true
+    keep_tex: true
+geometry: margin=1in
+fontsize: 11pt
+header-includes:
+  - \usepackage{amsmath}
+  - \usepackage{amssymb}
+  - \usepackage{bm}
+  - \usepackage{booktabs}
+  - \usepackage{graphicx}
+  - \usepackage{float}
+  - \usepackage{caption}
+  - \usepackage{setspace}
+  - \onehalfspacing
+---
+
+# Introduction
+
+Modeling financial return series requires accounting for features that deviate from the assumptions of classical Gaussian models. Empirical returns often exhibit heavy tails, abrupt jumps, and periods of elevated volatility, reflecting the complex dynamics of real-world markets. These characteristics motivate the use of models that explicitly incorporate jump components, self-exciting event structures, or flexible distributional shapes.
+
+In this project, we develop a simulation framework to study a discrete-time jump–diffusion model. These simulated datasets will later serve as controlled environments for evaluating different estimation approaches, including maximum likelihood estimation, the EM algorithm, and Bayesian methods.
+
+We begin with the jump–diffusion model, which provides a simple but powerful extension of the Gaussian diffusion process by allowing returns to experience sudden, random jumps. This model forms the foundation for the more complex simulation settings considered in later sections.
+
+# Jump–Diffusion Model and Simulation Setup
+
+## Model specification
+We consider a discrete-time jump–diffusion model for log-returns \(\{R_t\}_{t=1}^T\) of the form
+\[
+R_t = \mu + \sigma \varepsilon_t + Y_t Z_t,\quad t = 1,\dots,T,
+\]
+where
+\[
+\varepsilon_t \sim \mathcal{N}(0,1), \qquad
+Y_t \sim \text{Bernoulli}(p), \qquad
+Z_t \sim \mathcal{N}(\mu_J, \sigma_J^2),
+\]
+and \(\varepsilon_t\), \(Y_t\), and \(Z_t\) are mutually independent across time. Here \(\mu\) is the drift, \(\sigma\) is the diffusion (continuous) volatility, \(p\) is the jump probability at each time step, and \(\mu_J, \sigma_J^2\) describe the distribution of jump sizes. In the simulation study below, we fix \(T = 2000\) and consider several parameter regimes (low-, medium-, and high-risk)
+
+The following code simulates jump–diffusion returns under the three regimes and visualizes the resulting series.
+
+## Theoretical background and link to estimation
+
+The jump–diffusion specification
+\[
+R_t = \mu + \sigma \varepsilon_t + Y_t Z_t
+\]
+can be viewed as a finite mixture model for the marginal distribution of returns. Conditioning on whether a jump occurs at time \(t\),
+
+- with probability \(1-p\), \(Y_t = 0\) and
+  \[
+  R_t \mid (Y_t = 0) \sim \mathcal{N}(\mu, \sigma^2),
+  \]
+- with probability \(p\), \(Y_t = 1\) and
+  \[
+  R_t \mid (Y_t = 1) \sim \mathcal{N}(\mu + \mu_J,\, \sigma^2 + \sigma_J^2),
+  \]
+  because the diffusion shock \(\sigma \varepsilon_t\) and the jump \(Z_t\) add as independent Gaussian terms.
+
+Marginally, the distribution of \(R_t\) is therefore a two-component Gaussian mixture,
+\[
+R_t \sim (1-p)\,\mathcal{N}(\mu, \sigma^2)
+\;+\;
+p\,\mathcal{N}\bigl(\mu + \mu_J,\; \sigma^2 + \sigma_J^2\bigr),
+\]
+with parameters
+\[
+\theta = (\mu, \sigma, p, \mu_J, \sigma_J).
+\]
+
+In the simulation step above, we fixed \(\theta\) at three different values corresponding to low-, medium-, and high-risk regimes, thereby generating return series with increasingly frequent and severe jumps. These datasets serve as controlled environments in which the true parameter values are known by construction.
+
+In the **estimation step**, we reverse the perspective: we now treat \(\theta\) as unknown and the simulated returns \(\{R_t\}\) as observed data. Using the Gaussian mixture representation of the jump–diffusion model, we construct the log-likelihood as a function of \(\theta\) and obtain parameter estimates via numerical maximization (maximum likelihood estimation).
+
+##Frequentist Estimation (MLE and Bootstrap)
+
+Recall that under the jump–diffusion specification,
+\[
+R_t = \mu + \sigma \varepsilon_t + Y_t Z_t,
+\]
+with
+\[
+\varepsilon_t \sim \mathcal{N}(0,1), \quad
+Y_t \sim \text{Bernoulli}(p), \quad
+Z_t \sim \mathcal{N}(\mu_J, \sigma_J^2),
+\]
+the unconditional distribution of a single return \(R_t\) is a two-component Gaussian mixture:
+\[
+R_t \sim (1-p)\,\mathcal{N}(\mu, \sigma^2)
+\;+\;
+p\,\mathcal{N}\bigl(\mu + \mu_J,\; \sigma^2 + \sigma_J^2\bigr),
+\]
+with parameter vector
+\[
+\theta = (\mu, \sigma, p, \mu_J, \sigma_J).
+\]
+
+For an observed series \(R_1,\dots,R_T\), the likelihood is
+\[
+L(\theta)
+=
+\prod_{t=1}^T 
+\left[
+(1-p)\,\phi(R_t; \mu, \sigma^2)
++
+p\,\phi(R_t; \mu+\mu_J,\ \sigma^2 + \sigma_J^2)
+\right],
+\]
+where \(\phi(\cdot; m, v)\) denotes the Gaussian density with mean \(m\) and variance \(v\). The log-likelihood is
+\[
+\ell(\theta)
+=
+\sum_{t=1}^T
+\log\!\left[
+(1-p)\,\phi(R_t; \mu, \sigma^2)
++
+p\,\phi(R_t; \mu+\mu_J,\ \sigma^2 + \sigma_J^2)
+\right].
+\]
+
+Because \(\sigma > 0\), \(\sigma_J > 0\), and \(0 < p < 1\) must hold, it is convenient to reparameterize the model in terms of an unconstrained parameter vector
+\[
+\phi = (\phi_1, \phi_2, \phi_3, \phi_4, \phi_5)
+      = (\mu,\ \log\sigma,\ \text{logit}(p),\ \mu_J,\ \log\sigma_J),
+\]
+and define the mapping from \(\phi\) back to the original parameters,
+\[
+\sigma = e^{\phi_2}, \qquad
+p = \frac{1}{1 + e^{-\phi_3}}, \qquad
+\sigma_J = e^{\phi_5}.
+\]
+This guarantees \(\sigma > 0\), \(\sigma_J > 0\), and \(0 < p < 1\) for all \(\phi \in \mathbb{R}^5\), so that the optimizer only explores feasible parameter values.
+
+In practice, the log-likelihood is evaluated in a numerically stable way using a log-sum-exp formulation. For each time point \(t\), define
+\[
+\begin{aligned}
+\log f_1(R_t) &= \log\!\bigl(\phi(R_t; \mu, \sigma^2)\bigr),\\
+\log f_2(R_t) &= \log\!\bigl(\phi(R_t; \mu+\mu_J,\ \sigma^2 + \sigma_J^2)\bigr),
+\end{aligned}
+\]
+and
+\[
+\log w_1 = \log(1-p), \qquad \log w_2 = \log(p).
+\]
+Then
+\[
+\log\!\left[(1-p)\,f_1(R_t) + p\,f_2(R_t)\right]
+=
+\log\!\left[e^{\log w_1 + \log f_1(R_t)} + e^{\log w_2 + \log f_2(R_t)}\right]
+\]
+is computed via
+\[
+m_t = \max\{\log w_1 + \log f_1(R_t),\ \log w_2 + \log f_2(R_t)\},
+\]
+\[
+\log\!\left[(1-p)\,f_1(R_t) + p\,f_2(R_t)\right]
+=
+m_t + \log\!\left(
+e^{\log w_1 + \log f_1(R_t) - m_t}
++
+e^{\log w_2 + \log f_2(R_t) - m_t}
+\right),
+\]
+and the total log-likelihood is obtained by summing over \(t\).
+
+The maximum likelihood estimator (MLE) is defined as
+\[
+\hat{\phi}
+=
+\arg\max_{\phi \in \mathbb{R}^5} \ \ell\bigl(\theta(\phi)\bigr), 
+\qquad
+\hat{\theta} = \theta(\hat{\phi}),
+\]
+where \(\theta(\phi)\) denotes the transformation from \(\phi\) to \((\mu, \sigma, p, \mu_J, \sigma_J)\). In the implementation below, this optimization problem is solved numerically using the BFGS quasi-Newton method applied to the negative log-likelihood in \(\phi\)-space. Two safeguards are used. The returns are first rescaled to unit standard deviation, so that the optimizer works with numbers of order one, and the estimates are transformed back afterwards. The optimizer is then started from several points (four initial jump probabilities and two initial jump sizes) and the best maximum is kept, because the mixture likelihood has local maxima, including one in which the "jump" component describes ordinary days.
+
+
+```{r jd-simulated-data}
+# Simulation of jump–diffusion returns under three regimes
+
+set.seed(12345)  # reproducibility
+
+# Jump–diffusion simulator: R_t = mu + sigma * eps_t + Y_t * Z_t
+simulate_jump_diffusion <- function(n_obs, mu, sigma, p, mu_J, sigma_J) {
+  Y   <- rbinom(n_obs, size = 1, prob = p)       # jump indicators
+  Z   <- rnorm(n_obs, mean = mu_J, sd = sigma_J) # jump sizes
+  eps <- rnorm(n_obs, mean = 0, sd = 1)          # diffusion shocks
+  R   <- mu + sigma * eps + Y * Z                # log-returns
+  list(R = R, Y = Y, Z = Z)
+}
+
+# Length of each simulated series
+n_obs <- 2000
+
+# Parameter settings for three regimes
+jd_params <- list(
+  low = list(
+    mu      = 0.0003,
+    sigma   = 0.007,
+    p       = 0.01,
+    mu_J    = -0.015,
+    sigma_J = 0.01
+  ),
+  medium = list(
+    mu      = 0.0005,
+    sigma   = 0.01,
+    p       = 0.02,
+    mu_J    = -0.03,
+    sigma_J = 0.02
+  ),
+  high = list(
+    mu      = 0.0000,
+    sigma   = 0.02,
+    p       = 0.06,
+    mu_J    = -0.06,
+    sigma_J = 0.04
+  )
+)
+
+# Simulate data for each regime
+sim_jd <- lapply(jd_params, function(par) {
+  simulate_jump_diffusion(
+    n_obs  = n_obs,
+    mu     = par$mu,
+    sigma  = par$sigma,
+    p      = par$p,
+    mu_J   = par$mu_J,
+    sigma_J = par$sigma_J
+  )
+})
+
+# Convenient aliases for later use
+R_low    <- sim_jd$low$R
+Y_low    <- sim_jd$low$Y
+
+R_medium <- sim_jd$medium$R
+Y_medium <- sim_jd$medium$Y
+
+R_high   <- sim_jd$high$R
+Y_high   <- sim_jd$high$Y
+```
+
+```{r jd-plots, fig.height=7}
+par(mfrow = c(3, 1), mar = c(3, 4, 3, 1))
+
+# Low risk
+plot(R_low, type = "h",
+     main = "Low-Risk Jump–Diffusion Returns",
+     xlab = "", ylab = "R")
+abline(h = 0, col = "gray")
+points(which(Y_low == 1), R_low[Y_low == 1], col = "red", pch = 19)
+
+# Medium risk
+plot(R_medium, type = "h",
+     main = "Medium-Risk Jump–Diffusion Returns",
+     xlab = "", ylab = "R")
+abline(h = 0, col = "gray")
+points(which(Y_medium == 1), R_medium[Y_medium == 1], col = "red", pch = 19)
+
+# High risk
+plot(R_high, type = "h",
+     main = "High-Risk Jump–Diffusion Returns",
+     xlab = "Time", ylab = "R")
+abline(h = 0, col = "gray")
+points(which(Y_high == 1), R_high[Y_high == 1], col = "red", pch = 19)
+
+par(mfrow = c(1, 1))
+
+par(mfrow = c(1, 3), mar = c(4, 4, 3, 1))
+
+hist(R_low,    breaks = 40, main = "Low risk",    xlab = "R", freq = FALSE)
+hist(R_medium, breaks = 40, main = "Medium risk", xlab = "R", freq = FALSE)
+hist(R_high,   breaks = 40, main = "High risk",   xlab = "R", freq = FALSE)
+
+par(mfrow = c(1, 1))
+```
+
+The figures above illustrate the increasing frequency and magnitude of jumps as we move from the low- to the high-risk regime. The low-risk regime exhibits relatively stable returns with infrequent jumps, while the high-risk regime shows frequent, larger-magnitude discontinuities, consistent with the underlying parameter settings.
+
+```{r mle-jd}
+## ================================================
+## MLE for jump–diffusion model (point estimates)
+## ================================================
+
+## 1. Transform phi -> theta
+##    phi   = (mu, log_sigma, logit_p, mu_J, log_sigma_J)
+##    theta = (mu, sigma, p, mu_J, sigma_J)
+
+theta_from_phi <- function(phi) {
+  mu          <- phi[1]
+  log_sigma   <- phi[2]
+  logit_p     <- phi[3]
+  mu_J        <- phi[4]
+  log_sigma_J <- phi[5]
+  
+  sigma_raw   <- exp(log_sigma)
+  p_raw       <- 1 / (1 + exp(-logit_p))
+  sigmaJ_raw  <- exp(log_sigma_J)
+  
+  # Clamp to safe ranges
+  sigma   <- max(sigma_raw, 1e-6)
+  sigma_J <- max(sigmaJ_raw, 1e-6)
+  p       <- min(max(p_raw, 1e-6), 1 - 1e-6)
+  
+  theta <- c(mu, sigma, p, mu_J, sigma_J)
+  names(theta) <- c("mu", "sigma", "p", "mu_J", "sigma_J")
+  theta
+}
+
+## 2. Log-likelihood on theta-scale
+
+loglik_jd_theta <- function(theta, R) {
+  # ensure correct ordering
+  theta <- theta[c("mu", "sigma", "p", "mu_J", "sigma_J")]
+  mu      <- theta["mu"]
+  sigma   <- theta["sigma"]
+  p       <- theta["p"]
+  mu_J    <- theta["mu_J"]
+  sigma_J <- theta["sigma_J"]
+  
+  if (any(!is.finite(c(mu, sigma, p, mu_J, sigma_J)))) {
+    return(NA_real_)
+  }
+  
+  # No-jump: N(mu, sigma^2)
+  log_f1 <- dnorm(R, mean = mu, sd = sigma, log = TRUE)
+  
+  # Jump: N(mu + mu_J, sigma^2 + sigma_J^2)
+  sd2    <- sqrt(sigma^2 + sigma_J^2)
+  log_f2 <- dnorm(R, mean = mu + mu_J, sd = sd2, log = TRUE)
+  
+  # Mixture log-density via log-sum-exp
+  log_w1 <- log1p(-p)  # log(1 - p)
+  log_w2 <- log(p)     # log(p)
+  
+  a <- log_w1 + log_f1
+  b <- log_w2 + log_f2
+  
+  m       <- pmax(a, b)
+  log_mix <- m + log(exp(a - m) + exp(b - m))
+  
+  sum(log_mix)
+}
+
+## 3. Negative log-likelihood in phi-space (for optim)
+
+neg_loglik_jd_phi <- function(phi, R) {
+  theta <- theta_from_phi(phi)
+  ll    <- loglik_jd_theta(theta, R)
+  if (!is.finite(ll)) return(1e12)
+  -ll
+}
+
+## 4. Starting values
+
+init_phi_jd <- function(R) {
+  R_mean <- mean(R, na.rm = TRUE)
+  R_sd   <- sd(R,   na.rm = TRUE)
+  
+  mu_init      <- R_mean
+  sigma_init   <- ifelse(is.finite(R_sd) && R_sd > 0, R_sd / 2, 0.01)
+  p_init       <- 0.05
+  mu_J_init    <- -0.03
+  sigma_J_init <- sigma_init
+  
+  c(
+    mu          = mu_init,
+    log_sigma   = log(sigma_init),
+    logit_p     = qlogis(p_init),
+    mu_J        = mu_J_init,
+    log_sigma_J = log(sigma_J_init)
+  )
+}
+
+## 5. Fit function – returns theta-hat (with names) and convergence info
+##    Returns are rescaled to unit sd and BFGS is started from several points;
+##    the best maximum is kept (the mixture likelihood has local maxima).
+
+multi_starts_jd <- function(x) {
+  starts <- list()
+  for (p0 in c(0.003, 0.01, 0.03, 0.1)) for (m0 in c(-1, -3)) {
+    starts[[length(starts) + 1]] <- c(mu = mean(x), log_sigma = log(0.8), logit_p = qlogis(p0),
+                                      mu_J = m0, log_sigma_J = log(2))
+  }
+  starts
+}
+
+fit_jd_mle_simple <- function(R, init_phi = NULL, control = list()) {
+  s_R <- sd(R)
+  x   <- R / s_R                                   # rescaled returns
+  starts <- if (is.null(init_phi)) multi_starts_jd(x) else list(init_phi)
+
+  best <- NULL
+  for (phi0 in starts) {
+    opt <- optim(
+      par     = phi0,
+      fn      = neg_loglik_jd_phi,
+      R       = x,
+      method  = "BFGS",
+      control = modifyList(list(maxit = 2000, reltol = 1e-12), control)
+    )
+    if (is.null(best) || opt$value < best$value) best <- opt
+  }
+
+  theta_hat <- theta_from_phi(best$par)
+  # Undo the rescaling (p is unaffected)
+  scale_pars <- c("mu", "sigma", "mu_J", "sigma_J")
+  theta_hat[scale_pars] <- theta_hat[scale_pars] * s_R
+  # Make sure we ALWAYS have the standard names in the standard order
+  theta_hat <- theta_hat[c("mu", "sigma", "p", "mu_J", "sigma_J")]
+
+  list(
+    par_theta   = theta_hat,
+    logLik      = loglik_jd_theta(theta_hat, R),
+    convergence = best$convergence,
+    message     = best$message
+  )
+}
+
+## 6. Fit for all regimes (using your existing sim_jd and jd_params)
+
+regimes <- c("low", "medium", "high")
+
+fit_list <- lapply(regimes, function(reg) {
+  R_reg <- sim_jd[[reg]]$R
+  fit_jd_mle_simple(R_reg)
+})
+names(fit_list) <- regimes
+
+## Quick sanity check: are mus finite?
+sapply(fit_list, function(x) x$par_theta["mu"])
+
+## 7. Build summary table: true values vs estimates
+
+param_names <- c("mu", "sigma", "p", "mu_J", "sigma_J")
+
+summary_table <- do.call(
+  rbind,
+  lapply(regimes, function(reg) {
+    true_par  <- jd_params[[reg]]
+    est_theta <- fit_list[[reg]]$par_theta
+    
+    # true_par is a list; extract in same order as param_names
+    true_vec <- unlist(true_par)[param_names]
+    
+    data.frame(
+      regime     = reg,
+      parameter  = param_names,
+      true_value = true_vec,
+      estimate   = round(as.numeric(est_theta[param_names]),4),
+      row.names  = NULL
+    )
+  })
+)
+
+summary_table
+```
+
+The maximum likelihood estimates obtained from the simulated jump-diffusion datasets exhibit a clear relationship between parameter recovery and the frequency of jumps across regimes. In the medium- and high-risk settings, where jumps occur more frequently, the MLE performs reliably and recovers the true parameters with good accuracy: the drift $\mu$ and diffusion volatility $\sigma$ are estimated precisely, and the jump parameters $(p, \mu_J, \sigma_J)$ are close to their true values. In contrast, the low-risk regime, which contains very few jump events by construction, presents substantial challenges for estimation. While the continuous parameters $(\mu, \sigma)$ remain well identified, the jump-related parameters are poorly determined. On this dataset, which contains only 16 jumps, the estimated jump probability $p$ happens to be close to its true value, but the jump-size standard deviation $\sigma_J$ collapses to zero, and the bootstrap below shows that the estimate of $p$ is extremely uncertain. This pattern is consistent with the well-known difficulty of identifying mixture components when the mixing weight is extremely small. Overall, these results highlight that the MLE behaves appropriately when sufficient jump information is available but becomes unreliable in regimes with sparse jump activity.
+
+In many statistical models, analytic expressions for the variance of an estimator
+are difficult to obtain, either because the likelihood is complex, the
+information matrix is unstable, or the estimator does not arise from closed-form
+optimization. A general and widely applicable alternative is the nonparametric
+bootstrap, which approximates the sampling distribution of an estimator by
+repeated resampling of the observed data.
+
+Let $\hat{\theta}$ denote an estimator of a parameter vector
+$\theta = (\theta_1,\dots,\theta_d)$ based on an observed sample
+$R = (R_1,\dots,R_T)$. The bootstrap procedure proceeds as follows:
+
+1. Generate $B$ bootstrap samples $R^{*(1)},\dots,R^{*(B)}$ by sampling with
+   replacement from the original data $\{R_t\}_{t=1}^T$.
+
+2. For each bootstrap sample $R^{*(b)}$, compute the estimator
+   $\hat{\theta}^{*(b)}$ using the same estimation algorithm applied to the
+   original data. The bootstrap replicates
+   \[
+   \hat{\theta}^{*(1)},\dots,\hat{\theta}^{*(B)}
+   \]
+   provide an empirical approximation to the sampling distribution of
+   $\hat{\theta}$.
+
+3. For each component $\theta_j$, the bootstrap estimate of the standard error is
+   \[
+   \widehat{\mathrm{SE}}_{\mathrm{boot}}(\hat{\theta}_j)
+   =
+   \sqrt{
+     \frac{1}{B-1}
+     \sum_{b=1}^B
+     \bigl(\hat{\theta}^{*(b)}_j - \bar{\theta}^*_j\bigr)^2
+   },
+   \]
+   where
+   \[
+   \bar{\theta}^*_j = \frac{1}{B}\sum_{b=1}^B \hat{\theta}^{*(b)}_j
+   \]
+   is the bootstrap mean.
+
+The bootstrap standard error therefore captures the finite-sample variability of
+the estimator \emph{regardless of the method used to compute it}. This feature
+makes bootstrap inference particularly valuable for models such as finite
+mixtures or latent-variable models, where the Hessian may be singular or
+difficult to compute, or for estimation methods such as the EM algorithm or
+Bayesian posterior modes, where no closed-form variance expression is available.
+
+By consistently applying the same estimation procedure to each resampled dataset,
+the bootstrap provides a unified and model-agnostic measure of estimator
+uncertainty that can be compared across different estimation methods.
+
+```{r se-mle-jd-bootstrap, message=FALSE}
+## ================================================
+## Bootstrap SEs for the jump–diffusion MLE
+## ================================================
+
+# Assumes the following are already defined from previous chunks:
+# - jd_params   (list of true parameters for low/medium/high)
+# - sim_jd      (simulated data for each regime)
+# - regimes     <- c("low", "medium", "high")
+# - fit_jd_mle_simple(R, ...)  (returns par_theta with names)
+
+bootstrap_jd <- function(R, B = 300, control = list()) {
+  param_names <- c("mu", "sigma", "p", "mu_J", "sigma_J")
+  est_mat <- matrix(NA_real_, nrow = B, ncol = length(param_names))
+  colnames(est_mat) <- param_names
+  
+  n_success <- 0L
+  
+  for (b in seq_len(B)) {
+    # Resample returns with replacement
+    R_b <- sample(R, size = length(R), replace = TRUE)
+    
+    # Try to fit the model on the bootstrap sample
+    fit_b <- try(fit_jd_mle_simple(R_b, control = control), silent = TRUE)
+    
+    # Skip failed fits or non-list results
+    if (inherits(fit_b, "try-error") || !is.list(fit_b)) next
+    
+    # If fit_jd_mle_simple includes convergence info, you can optionally skip
+    # non-converged fits; here we just check if such a field exists:
+    if (!is.null(fit_b$convergence) && fit_b$convergence != 0) next
+    
+    est_b <- fit_b$par_theta[param_names]
+    if (any(!is.finite(est_b))) next
+    
+    n_success <- n_success + 1L
+    est_mat[n_success, ] <- est_b
+  }
+  
+  if (n_success == 0L) {
+    stop("All bootstrap fits failed for this series.")
+  }
+  
+  # Keep only successful rows
+  est_mat <- est_mat[seq_len(n_success), , drop = FALSE]
+  
+  boot_mean <- colMeans(est_mat, na.rm = TRUE)
+  boot_se   <- apply(est_mat, 2, sd, na.rm = TRUE)
+  
+  list(
+    estimates = est_mat,
+    mean      = boot_mean,
+    se        = boot_se,
+    n_success = n_success
+  )
+}
+
+## Run bootstrap for each regime
+set.seed(123)  # for reproducibility of bootstrap resamples
+
+boot_list <- lapply(regimes, function(reg) {
+  R_reg <- sim_jd[[reg]]$R
+  bootstrap_jd(R_reg, B = 300)
+})
+names(boot_list) <- regimes
+
+## Build summary table: true values, MLE estimates, bootstrap SEs
+
+param_names <- c("mu", "sigma", "p", "mu_J", "sigma_J")
+
+summary_boot <- do.call(
+  rbind,
+  lapply(regimes, function(reg) {
+    true_par  <- jd_params[[reg]]
+    mle_theta <- fit_list[[reg]]$par_theta
+    boot_se   <- boot_list[[reg]]$se
+    
+    data.frame(
+      regime     = reg,
+      parameter  = param_names,
+      true_value = unlist(true_par)[param_names],
+      mle_est    = round(as.numeric(mle_theta[param_names]), 4),
+      boot_se    = round(as.numeric(boot_se[param_names]), 4),
+      row.names  = NULL
+    )
+  })
+)
+
+summary_boot
+```
+
+The nonparametric bootstrap standard errors reinforce the identifiability patterns observed in the point estimates. In the medium- and high-risk regimes, where jump events occur with reasonable frequency, the bootstrap distribution yields stable and interpretable uncertainty measures for all parameters. However, in the low-risk regime, the bootstrap results deteriorate sharply. Because many bootstrap resamples contain few or no jumps, the likelihood surface becomes effectively flat in the jump parameters, resulting in very large standard errors for the jump parameters; the standard error of $p$ is more than thirty times the estimate itself. This behavior does not reflect numerical issues but instead arises from fundamental non-identifiability of the jump component when the probability of observing a jump is very small. The bootstrap analysis therefore confirms that reliable inference for jump parameters requires a sufficient number of jump observations, while the diffusion parameters $(\mu, \sigma)$ remain consistently estimable across all regimes.
+
+The theoretical formulation of the jump-diffusion likelihood corresponds exactly to the estimation procedure implemented in the accompanying code. The mixture representation of the return distribution,
+\[
+R_t \sim (1-p)\,\mathcal{N}(\mu,\sigma^2)+p\,\mathcal{N}(\mu+\mu_J,\sigma^2+\sigma_J^2),
+\]
+is the basis for the log-likelihood function evaluated in the optimizer. The reparameterization
+\[
+(\mu,\log\sigma,\mathrm{logit}(p),\mu_J,\log\sigma_J)
+\]
+ensures that the constraints $\sigma>0$, $\sigma_J>0$, and $0<p<1$ are automatically enforced throughout the numerical search, precisely as described in the theoretical section. Likewise, the log-sum-exp formulation used in the code mirrors the stabilized likelihood expression derived algebraically. Thus, the implemented MLE routine is a direct computational translation of the model assumptions and likelihood structure presented in the theory.
+
+##EM Estimation and Bootstrap
+
+The jump-diffusion specification
+\[
+R_t = \mu + \sigma \varepsilon_t + Y_t Z_t,\qquad t = 1,\dots,T,
+\]
+with
+\[
+\varepsilon_t \sim \mathcal{N}(0,1), \quad
+Y_t \sim \text{Bernoulli}(p), \quad
+Z_t \sim \mathcal{N}(\mu_J,\sigma_J^2),
+\]
+implies that the unconditional distribution of each return \(R_t\) is a
+two-component Gaussian mixture. Conditional on the latent jump
+indicator \(Y_t\),
+\[
+R_t \mid (Y_t = 0) \sim \mathcal{N}(\mu,\sigma^2), \qquad
+R_t \mid (Y_t = 1) \sim \mathcal{N}(\mu + \mu_J,\ \sigma^2 + \sigma_J^2),
+\]
+so that
+\[
+R_t \sim (1-p)\,\mathcal{N}(\mu,\sigma^2)
+\;+\;
+p\,\mathcal{N}\!\bigl(\mu+\mu_J,\ \sigma^2+\sigma_J^2\bigr),
+\]
+with parameter vector
+\[
+\theta = (\mu,\sigma,p,\mu_J,\sigma_J).
+\]
+
+Direct maximization of the mixture likelihood can be numerically
+challenging, especially when the jump probability \(p\) is small.
+Instead, we exploit the latent-variable representation and use the
+expectation-maximization (EM) algorithm to obtain the maximum
+likelihood estimate of \(\theta\).
+
+\paragraph{Complete-data formulation.}
+Introduce latent indicators
+\[
+Y_t =
+\begin{cases}
+0, & \text{if no jump occurs at time } t,\\[3pt]
+1, & \text{if a jump occurs at time } t,
+\end{cases}
+\]
+together with the latent jump sizes \(Z_t\), and define the complete data
+as \(\{(R_t,Y_t,Z_t)\}_{t=1}^T\). Treating the jump size as missing data,
+and not only the indicator, is what keeps the constraint that the jump
+component's variance is \(\sigma^2+\sigma_J^2\): given the latent
+variables, \(R_t-\mu-Y_tZ_t\sim\mathcal{N}(0,\sigma^2)\) and
+\(Z_t\sim\mathcal{N}(\mu_J,\sigma_J^2)\), so the complete-data
+log-likelihood is, up to a constant,
+\[
+\ell_c(\theta)
+=
+\sum_{t=1}^T\Bigl[
+Y_t\log p+(1-Y_t)\log(1-p)
+-\tfrac12\log\sigma^2-\frac{(R_t-\mu-Y_tZ_t)^2}{2\sigma^2}
++Y_t\Bigl\{-\tfrac12\log\sigma_J^2-\frac{(Z_t-\mu_J)^2}{2\sigma_J^2}\Bigr\}
+\Bigr].
+\]
+
+\paragraph{E-step.}
+Given a current parameter value \(\theta^{(k)}\), the E-step computes
+\[
+Q(\theta \mid \theta^{(k)})
+=
+\mathbb{E}_{\theta^{(k)}}\bigl[\ell_c(\theta)\,\big|\{R_t\}_{t=1}^T\bigr].
+\]
+This requires the posterior jump probabilities
+\[
+\tau_t^{(k)}
+=
+\Pr_{\theta^{(k)}}(Y_t = 1 \mid R_t)
+=
+\frac{
+p^{(k)}\,\phi\!\bigl(R_t;\mu^{(k)}+\mu_J^{(k)},\ (\sigma^{(k)})^2 + (\sigma_J^{(k)})^2\bigr)
+}{
+(1-p^{(k)})\,\phi\!\bigl(R_t;\mu^{(k)},(\sigma^{(k)})^2\bigr)
++
+p^{(k)}\,\phi\!\bigl(R_t;\mu^{(k)}+\mu_J^{(k)},\ (\sigma^{(k)})^2 + (\sigma_J^{(k)})^2\bigr)
+},
+\]
+and the moments of the jump size on jump days. Since
+\(R_t-\mu=Z_t+\sigma\varepsilon_t\) when \(Y_t=1\),
+\[
+Z_t\mid R_t,\,Y_t=1\ \sim\ \mathcal{N}(m_t,v),\qquad
+m_t=\mu_J+\frac{\sigma_J^2}{\sigma^2+\sigma_J^2}\,(R_t-\mu-\mu_J),\qquad
+v=\frac{\sigma^2\sigma_J^2}{\sigma^2+\sigma_J^2},
+\]
+evaluated at \(\theta^{(k)}\). Write \(a_t=\tau_t m_t=\mathbb{E}[Y_tZ_t\mid R_t]\) and
+\(b_t=\tau_t(m_t^2+v)=\mathbb{E}[Y_tZ_t^2\mid R_t]\).
+
+\paragraph{M-step.}
+Maximizing \(Q(\theta\mid\theta^{(k)})\) gives closed-form updates:
+\[
+p^{(k+1)}=\frac1T\sum_{t=1}^T\tau_t,\qquad
+\mu^{(k+1)}=\frac1T\sum_{t=1}^T(R_t-a_t),
+\]
+\[
+(\sigma^{(k+1)})^2=\frac1T\sum_{t=1}^T\Bigl[(R_t-\mu^{(k+1)})^2-2(R_t-\mu^{(k+1)})\,a_t+b_t\Bigr],
+\]
+\[
+\mu_J^{(k+1)}=\frac{\sum_t a_t}{\sum_t\tau_t},\qquad
+(\sigma_J^{(k+1)})^2=\frac{\sum_t\bigl(b_t-2\mu_J^{(k+1)}a_t+\tau_t(\mu_J^{(k+1)})^2\bigr)}{\sum_t\tau_t}.
+\]
+Each iteration cannot decrease the observed-data log-likelihood.
+
+\paragraph{Convergence.}
+Starting from an initial guess \(\theta^{(0)}\), the EM algorithm
+alternates between E-steps and M-steps until convergence, typically
+assessed via the change in the log-likelihood or the change in
+\(\theta^{(k)}\) between successive iterations. The resulting estimate
+\(\hat{\theta}_{\mathrm{EM}}\) is a local maximizer of the
+observed-data likelihood for the jump-diffusion mixture model. As for the
+MLE, the algorithm is started from several initial values and the solution
+with the highest log-likelihood is used as the EM-based point estimate of
+the jump-diffusion parameters in each simulated regime.
+
+
+```{r em-jd-bootstrap, message=FALSE}
+## ================================================
+## EM estimation for jump–diffusion model
+## (latent jump indicators and jump sizes)
+## ================================================
+
+## 1. Exact EM for the jump-diffusion model
+##    Latent data: jump indicators Y_t and jump sizes Z_t.
+##    E-step: tau_t = P(Y_t = 1 | R_t), and Z_t | R_t, Y_t = 1 ~ N(m_t, v)
+##    M-step: closed-form updates of (p, mu, sigma, mu_J, sigma_J)
+
+fit_em_jd_single <- function(R, p_init = 0.05, mu_J_init_sd = -1,
+                             max_iter = 5000, tol = 1e-10) {
+  R <- as.numeric(R)
+  R_sd <- sd(R)
+  
+  ## -- Initialization (simple, data-driven) --
+  mu      <- mean(R)
+  sigma   <- R_sd / 1.2
+  p       <- p_init
+  mu_J    <- mu_J_init_sd * R_sd
+  sigma_J <- 2 * R_sd
+  
+  loglik_old <- -Inf
+  for (iter in seq_len(max_iter)) {
+    theta <- c(mu = mu, sigma = sigma, p = p, mu_J = mu_J, sigma_J = sigma_J)
+    
+    ## -- E-step: jump probabilities and jump-size moments --
+    log_f0 <- log1p(-p) + dnorm(R, mu, sigma, log = TRUE)
+    log_f1 <- log(p) + dnorm(R, mu + mu_J, sqrt(sigma^2 + sigma_J^2), log = TRUE)
+    tau <- 1 / (1 + exp(log_f0 - log_f1))
+    
+    w   <- sigma_J^2 / (sigma^2 + sigma_J^2)
+    m_t <- mu_J + w * (R - mu - mu_J)      # E[Z_t | R_t, Y_t = 1]
+    v   <- sigma^2 * w                     # Var[Z_t | R_t, Y_t = 1]
+    a_t <- tau * m_t                       # E[Y_t Z_t   | R_t]
+    b_t <- tau * (m_t^2 + v)               # E[Y_t Z_t^2 | R_t]
+    
+    ## -- M-step --
+    p       <- mean(tau)
+    mu      <- mean(R - a_t)
+    sigma   <- sqrt(mean((R - mu)^2 - 2 * (R - mu) * a_t + b_t))
+    mu_J    <- sum(a_t) / sum(tau)
+    sigma_J <- sqrt(max(sum(b_t - 2 * mu_J * a_t + tau * mu_J^2) / sum(tau), 1e-12))
+    
+    if (p < 1e-5 || sigma_J < 1e-7) break  # jump component has vanished
+    
+    ## -- Convergence check on the observed-data log-likelihood --
+    loglik_new <- loglik_jd_theta(c(mu = mu, sigma = sigma, p = p, mu_J = mu_J, sigma_J = sigma_J), R)
+    if (abs(loglik_new - loglik_old) < tol * (1 + abs(loglik_new))) break
+    loglik_old <- loglik_new
+  }
+  
+  theta_hat <- c(mu = mu, sigma = sigma, p = p, mu_J = mu_J, sigma_J = sigma_J)
+  list(par_theta = theta_hat, logLik = loglik_jd_theta(theta_hat, R), iter = iter)
+}
+
+## 2. Run EM from several starting values and keep the best solution
+
+fit_em_jd <- function(R, max_iter = 5000, tol = 1e-10) {
+  best <- NULL
+  for (p0 in c(0.003, 0.01, 0.03, 0.1)) for (m0 in c(-1, -3)) {
+    fit <- fit_em_jd_single(R, p_init = p0, mu_J_init_sd = m0, max_iter = max_iter, tol = tol)
+    if (is.finite(fit$logLik) && (is.null(best) || fit$logLik > best$logLik)) best <- fit
+  }
+  best
+}
+
+## 4. Fit EM for each regime
+
+regimes <- c("low", "medium", "high")
+
+fit_em_list <- lapply(regimes, function(reg) {
+  R_reg <- sim_jd[[reg]]$R
+  fit_em_jd(R_reg)
+})
+names(fit_em_list) <- regimes
+
+## Quick check of EM estimates
+sapply(fit_em_list, function(x) x$par_theta)
+
+## 5. Bootstrap SEs for EM estimator
+
+bootstrap_em_jd <- function(R, B = 300, max_iter = 5000, tol = 1e-10) {
+  param_names <- c("mu", "sigma", "p", "mu_J", "sigma_J")
+  est_mat <- matrix(NA_real_, nrow = B, ncol = length(param_names))
+  colnames(est_mat) <- param_names
+  
+  n_success <- 0L
+  
+  for (b in seq_len(B)) {
+    R_b <- sample(R, size = length(R), replace = TRUE)
+    
+    fit_b <- try(fit_em_jd(R_b, max_iter = max_iter, tol = tol), silent = TRUE)
+    if (inherits(fit_b, "try-error") || !is.list(fit_b)) next
+    
+    est_b <- fit_b$par_theta[param_names]
+    if (any(!is.finite(est_b))) next
+    
+    n_success <- n_success + 1L
+    est_mat[n_success, ] <- est_b
+  }
+  
+  if (n_success == 0L) {
+    stop("All EM bootstrap fits failed for this series.")
+  }
+  
+  est_mat <- est_mat[seq_len(n_success), , drop = FALSE]
+  
+  boot_mean <- colMeans(est_mat, na.rm = TRUE)
+  boot_se   <- apply(est_mat, 2, sd, na.rm = TRUE)
+  
+  list(
+    estimates = est_mat,
+    mean      = boot_mean,
+    se        = boot_se,
+    n_success = n_success
+  )
+}
+
+## 6. Run bootstrap for each regime
+
+set.seed(456)  # separate seed from MLE bootstrap
+
+boot_em_list <- lapply(regimes, function(reg) {
+  R_reg <- sim_jd[[reg]]$R
+  bootstrap_em_jd(R_reg, B = 300)
+})
+names(boot_em_list) <- regimes
+
+## 7. Summary table: true values, EM estimates, bootstrap SEs
+
+param_names <- c("mu", "sigma", "p", "mu_J", "sigma_J")
+
+summary_em_boot <- do.call(
+  rbind,
+  lapply(regimes, function(reg) {
+    true_par <- jd_params[[reg]]
+    em_theta <- fit_em_list[[reg]]$par_theta
+    boot_se  <- boot_em_list[[reg]]$se
+    
+    data.frame(
+      regime     = reg,
+      parameter  = param_names,
+      true_value = unlist(true_par)[param_names],
+      em_est     = round(as.numeric(em_theta[param_names]), 4),
+      boot_se    = round(as.numeric(boot_se[param_names]), 4),
+      row.names  = NULL
+    )
+  })
+)
+
+summary_em_boot
+```
+
+The EM-based estimates for the jump-diffusion model display a pattern that closely parallels the behavior observed under maximum likelihood estimation, with performance strongly dependent on the frequency of jump events in the underlying regime. Because EM maximizes the same likelihood, its point estimates agree with the MLE to the reported precision. In the medium- and high-risk settings, where the data contain enough realizations from both mixture components, the EM algorithm accurately recovers the drift $\mu$, the diffusion volatility $\sigma$, and the jump parameters $(p, \mu_J, \sigma_J)$, with bootstrap standard errors that remain well-behaved across all parameters. In contrast, the low-risk regime poses a more challenging inference environment: as for the MLE, the jump-size standard deviation collapses toward zero and the bootstrap standard error of $p$ is many times larger than the estimate, reflecting the ambiguity created by the scarcity of observed jumps. Despite this, the EM algorithm still produces finite and interpretable estimates, and its bootstrap variability correctly reflects the increased uncertainty associated with the nearly unidentifiable jump component. Overall, the EM procedure offers a stable and computationally convenient alternative to direct likelihood maximization, particularly in moderate- and high-jump settings, while inheriting the same fundamental limitations when jump events are extremely rare.
+
+## Bayesian Estimation via Gibbs Sampling
+
+To complement the maximum likelihood and EM estimators, we employ a
+Bayesian approach to infer the parameters of the jump-diffusion model
+\[
+R_t=\mu+\sigma\varepsilon_t+Y_t Z_t,
+\qquad t=1,\ldots,T,
+\]
+where
+\[
+\varepsilon_t\sim\mathcal{N}(0,1),\quad
+Y_t\sim\mathrm{Bernoulli}(p),\quad
+Z_t\sim\mathcal{N}(\mu_J,\sigma_J^2).
+\]
+Marginally, each return follows the two–component Gaussian mixture
+\[
+R_t \sim (1-p)\,\mathcal{N}(\mu,\sigma^2)
+\;+\;
+p\,\mathcal{N}(\mu+\mu_J,\ \sigma^2+\sigma_J^2).
+\]
+In the Bayesian formulation, the latent indicators \(Y_t\),
+representing whether a jump occurred at time \(t\), are treated as
+unobserved data. The Gibbs sampler exploits this latent–variable
+representation to alternate between sampling the latent labels and
+sampling the model parameters from their full conditional distributions.
+
+### Latent–variable augmentation
+
+Define
+\[
+Y_t =
+\begin{cases}
+1, & \text{if a jump occurs at time } t,\\
+0, & \text{otherwise},
+\end{cases}
+\]
+and let \(\theta=(\mu,\sigma,p,\mu_J,\sigma_J)\) denote the parameter
+vector. Augmenting only \(Y_t\) gives
+\(R_t\mid (Y_t=1) \sim \mathcal{N}(\mu+\mu_J,\ \sigma^2+\sigma_J^2)\), whose
+variance mixes \(\sigma^2\) and \(\sigma_J^2\), so the variance updates are
+not conjugate. We therefore also augment the jump sizes \(Z_t\). Given
+both latent variables,
+\[
+R_t-\mu-Y_tZ_t \sim \mathcal{N}(0,\sigma^2),\qquad
+Z_t \sim \mathcal{N}(\mu_J,\sigma_J^2),
+\]
+which converts the mixture model into a conditionally Gaussian structure
+with closed-form updates for every parameter.
+
+### Priors
+We adopt weakly informative priors chosen to stabilize estimation while
+avoiding undue influence:
+\[
+p \sim \mathrm{Beta}(a_0,b_0),\qquad
+\mu,\mu_J \sim \mathcal{N}(0,\,\tau^2),
+\]
+\[
+\sigma^2 \sim \mathrm{Inv{\text-}Gamma}(\alpha_0,\beta_0),\qquad
+\sigma_J^2 \sim \mathrm{Inv{\text-}Gamma}(\gamma_0,\delta_0),
+\]
+with \(a_0=1\), \(b_0=9\), \(\tau=0.05\), \(\alpha_0=\gamma_0=2\) and
+\(\beta_0=\delta_0=2\times10^{-4}\).
+These priors ensure positivity of variances and allow the likelihood to
+dominate the posterior in the medium– and high–jump regimes.
+
+### Full conditional distributions
+
+The Gibbs sampler cycles through the following updates.
+
+#### 1. Sampling latent jump indicators and jump sizes
+For each observation,
+\[
+\Pr(Y_t=1\mid R_t,\theta)
+=
+\frac{
+p\,\phi\!\bigl(R_t;\mu+\mu_J,\ \sigma^2+\sigma_J^2\bigr)
+}{
+(1-p)\,\phi(R_t;\mu,\sigma^2)+
+p\,\phi\!\bigl(R_t;\mu+\mu_J,\ \sigma^2+\sigma_J^2\bigr)
+},
+\]
+and \(Y_t\) is drawn from a Bernoulli distribution with this probability.
+On days with \(Y_t=1\) the jump size is drawn from
+\[
+Z_t\mid R_t,Y_t=1,\theta\ \sim\ \mathcal{N}\!\left(
+\mu_J+\frac{\sigma_J^2}{\sigma^2+\sigma_J^2}(R_t-\mu-\mu_J),\ \
+\frac{\sigma^2\sigma_J^2}{\sigma^2+\sigma_J^2}\right);
+\]
+on other days \(Z_t\) does not enter the likelihood and is set to zero.
+
+#### 2. Updating the mixture weight \(p\)
+Given the latent indicators, with \(N_1=\sum_t Y_t\),
+\[
+p\mid Y \sim \mathrm{Beta}\!\left(a_0+N_1,\quad b_0+T-N_1\right).
+\]
+
+#### 3. Updating the means
+The drift uses all \(T\) observations after removing the sampled jumps,
+and the jump mean uses the \(N_1\) sampled jump sizes:
+\[
+\mu \mid R,Y,Z,\sigma^2
+\sim
+\mathcal{N}\!\left(
+\frac{\sigma^{-2}\sum_{t}(R_t-Y_tZ_t)}{\tau^{-2} + T \sigma^{-2}},
+\quad
+\frac{1}{\tau^{-2} + T \sigma^{-2}}
+\right),
+\]
+\[
+\mu_J \mid Y,Z,\sigma_J^2
+\sim
+\mathcal{N}\!\left(
+\frac{\sigma_J^{-2} \sum_{t:Y_t=1}Z_t}
+{\tau^{-2} + N_1 \sigma_J^{-2}},
+\;
+\frac{1}{\tau^{-2} + N_1\sigma_J^{-2}}
+\right).
+\]
+
+#### 4. Updating variances
+The diffusion and jump variances have inverse–Gamma full conditionals:
+\[
+\sigma^2 \mid R,Y,Z,\mu
+\sim
+\mathrm{Inv{\text-}Gamma}\!\left(
+\alpha_0+\frac{T}{2},\quad
+\beta_0+\frac{1}{2}\sum_{t}(R_t-\mu-Y_tZ_t)^2
+\right),
+\]
+\[
+\sigma_J^2 \mid Y,Z,\mu_J
+\sim
+\mathrm{Inv{\text-}Gamma}\!\left(
+\gamma_0+\frac{N_1}{2},\quad
+\delta_0+\frac{1}{2}\sum_{t:Y_t=1}(Z_t-\mu_J)^2
+\right).
+\]
+
+### Gibbs sampling procedure
+
+Starting from initial parameter values, the sampler iterates the following cycle:
+
+1. Sample \(Y_t\), and \(Z_t\) on jump days, for all \(t\).
+2. Sample \(p\) from its Beta conditional.
+3. Sample \(\mu\) from its Gaussian conditional.
+4. Sample \(\sigma^2\) from its inverse–Gamma conditional.
+5. Sample \(\mu_J\) and then \(\sigma_J^2\) from their conditionals.
+
+Each full Gibbs sweep produces a draw from the joint posterior
+\[ p(\mu,\sigma,p,\mu_J,\sigma_J,Y,Z\mid R). \]
+After discarding burn–in iterations and thinning if desired, the
+remaining draws are used to compute posterior means, standard deviations,
+and credible intervals for all parameters.
+
+### Interpretation
+The Gibbs sampler provides a fully Bayesian estimate of the jump–diffusion
+parameters while naturally accounting for uncertainty in the latent jump
+allocation. Unlike MLE and EM, which may struggle in low–jump regimes,
+the Bayesian approach yields coherent posterior uncertainty
+quantification that properly reflects identifiability limitations. In
+settings with sufficient jump information, the posterior concentrates
+around the true parameter values, closely matching the performance of
+MLE and EM while providing richer inferential output.
+
+
+```{r jd-gibbs}
+## ================================================
+## Gibbs sampler for jump–diffusion model
+## (latent jump indicators and jump sizes)
+## ================================================
+
+## Inverse-Gamma sampler (shape = a, rate = b)
+rinvgamma <- function(n, shape, rate) {
+  1 / rgamma(n, shape = shape, rate = rate)
+}
+
+## One Gibbs run for a single return series R
+## Latent variables: jump indicators Y_t and jump sizes Z_t
+gibbs_jd <- function(R,
+                     n_iter   = 10000,
+                     burnin   = 2000,
+                     thin     = 10,
+                     hyper_p  = c(a = 1, b = 9),   # Beta prior for p
+                     hyper_mv = list(
+                       tau    = 0.05,   # prior sd for mu and mu_J
+                       alpha0 = 2,      # Inv-Gamma shape (sigma^2 and sigma_J^2)
+                       beta0  = 2e-4    # Inv-Gamma rate  (sigma^2 and sigma_J^2)
+                     )) {
+  R <- as.numeric(R)
+  Tlen <- length(R)
+  
+  ## -- Priors --
+  a_p    <- hyper_p["a"]
+  b_p    <- hyper_p["b"]
+  tau    <- hyper_mv$tau
+  alpha0 <- hyper_mv$alpha0
+  beta0  <- hyper_mv$beta0
+  
+  ## -- Storage for MCMC draws (JD parameters) --
+  keep_idx <- seq(from = burnin + 1, to = n_iter, by = thin)
+  n_keep   <- length(keep_idx)
+  
+  param_names <- c("mu", "sigma", "p", "mu_J", "sigma_J")
+  draws <- matrix(NA_real_, nrow = n_keep, ncol = length(param_names))
+  colnames(draws) <- param_names
+  
+  ## -- Initialization (rough, data-based) --
+  R_sd    <- sd(R)
+  mu      <- mean(R)
+  sigma2  <- (R_sd / 1.5)^2
+  p       <- 0.05
+  mu_J    <- -R_sd
+  sigmaJ2 <- (2 * R_sd)^2
+  
+  iter_keep <- 0L
+  
+  for (iter in seq_len(n_iter)) {
+    ## ============================
+    ## 1. Sample jump indicators Y_t and jump sizes Z_t
+    ## ============================
+    log_f0 <- log1p(-p) + dnorm(R, mu, sqrt(sigma2), log = TRUE)
+    log_f1 <- log(p) + dnorm(R, mu + mu_J, sqrt(sigma2 + sigmaJ2), log = TRUE)
+    prob1  <- 1 / (1 + exp(log_f0 - log_f1))
+    Y  <- rbinom(Tlen, size = 1, prob = prob1) == 1
+    n1 <- sum(Y)
+    
+    Z <- numeric(Tlen)
+    if (n1 > 0) {
+      w <- sigmaJ2 / (sigma2 + sigmaJ2)
+      Z[Y] <- rnorm(n1, mean = mu_J + w * (R[Y] - mu - mu_J), sd = sqrt(sigma2 * w))
+    }
+    
+    ## ============================
+    ## 2. Sample p | Y
+    ## ============================
+    p <- rbeta(1, a_p + n1, b_p + Tlen - n1)
+    
+    ## ============================
+    ## 3. Sample mu and sigma^2 (all days, jumps removed)
+    ## ============================
+    prec_mu <- 1 / tau^2 + Tlen / sigma2
+    mu      <- rnorm(1, mean = (sum(R - Z) / sigma2) / prec_mu, sd = sqrt(1 / prec_mu))
+    sigma2  <- rinvgamma(1, shape = alpha0 + Tlen / 2,
+                         rate = beta0 + 0.5 * sum((R - mu - Z)^2))
+    
+    ## ============================
+    ## 4. Sample mu_J and sigma_J^2 (sampled jump sizes)
+    ## ============================
+    prec_J  <- 1 / tau^2 + n1 / sigmaJ2
+    mu_J    <- rnorm(1, mean = (sum(Z[Y]) / sigmaJ2) / prec_J, sd = sqrt(1 / prec_J))
+    sigmaJ2 <- rinvgamma(1, shape = alpha0 + n1 / 2,
+                         rate = beta0 + 0.5 * sum((Z[Y] - mu_J)^2))
+    
+    ## ============================
+    ## 5. Store JD parameters after burn-in + thinning
+    ## ============================
+    if (iter %in% keep_idx) {
+      iter_keep <- iter_keep + 1L
+      draws[iter_keep, ] <- c(mu, sqrt(sigma2), p, mu_J, sqrt(sigmaJ2))
+    }
+  }
+  
+  list(
+    draws   = draws,
+    R       = R,
+    n_iter  = n_iter,
+    burnin  = burnin,
+    thin    = thin,
+    hyper_p = hyper_p,
+    hyper_mv = hyper_mv
+  )
+}
+
+## ================================================
+## Run Gibbs sampler for each regime
+## ================================================
+
+set.seed(789)  # reproducibility for Gibbs
+
+regimes <- c("low", "medium", "high")
+param_names <- c("mu", "sigma", "p", "mu_J", "sigma_J")
+
+gibbs_list <- lapply(regimes, function(reg) {
+  R_reg <- sim_jd[[reg]]$R
+  gibbs_jd(R_reg,
+           n_iter = 10000,
+           burnin = 2000,
+           thin   = 10)
+})
+names(gibbs_list) <- regimes
+
+## Posterior summaries: mean, median, sd and 95% credible interval
+## (the posterior of p is skewed when jumps are rare, so the median is reported too)
+summary_gibbs <- do.call(
+  rbind,
+  lapply(regimes, function(reg) {
+    draws <- gibbs_list[[reg]]$draws
+
+    post_mean   <- colMeans(draws)
+    post_median <- apply(draws, 2, median)
+    post_sd     <- apply(draws, 2, sd)
+    post_lo     <- apply(draws, 2, quantile, probs = 0.025)
+    post_hi     <- apply(draws, 2, quantile, probs = 0.975)
+
+    true_par <- jd_params[[reg]]
+    true_vec <- unlist(true_par)[param_names]
+
+    data.frame(
+      regime      = reg,
+      parameter   = param_names,
+      true_value  = true_vec,
+      post_mean   = round(as.numeric(post_mean[param_names]), 4),
+      post_median = round(as.numeric(post_median[param_names]), 4),
+      post_sd     = round(as.numeric(post_sd[param_names]), 4),
+      ci_2.5      = round(as.numeric(post_lo[param_names]), 4),
+      ci_97.5     = round(as.numeric(post_hi[param_names]), 4),
+      row.names   = NULL
+    )
+  })
+)
+
+summary_gibbs
+
+## Quantities used in the text below
+g_low_p      <- gibbs_list$low$draws[, "p"]
+g_low_mean   <- mean(g_low_p)
+g_low_median <- median(g_low_p)
+```
+
+The Gibbs sampler provides a fully Bayesian alternative to the MLE and EM
+estimators and exhibits performance patterns consistent with the degree of jump
+activity in each regime. In the medium- and high-risk settings, where the data
+contain a sufficiently large number of jump observations, the posterior
+distributions concentrate tightly around the true parameter values, and the
+posterior means for \(\mu\), \(\sigma\), \(p\), \(\mu_J\), and \(\sigma_J\)
+closely match both the simulation truth and the estimates obtained from the MLE
+and EM algorithms. The posterior standard deviations in these regimes are small
+and stable, reflecting well-identified mixture components and a likelihood that
+provides strong information about both the diffusion and jump structures.
+
+In contrast, the low-risk regime once again highlights the fundamental
+identifiability issues that arise when jump events are extremely rare. The
+posterior distributions for the jump probability \(p\) and the jump magnitude
+parameters \(\mu_J\) and \(\sigma_J\) become diffuse, with large posterior
+variances and noticeable shrinkage toward the diffusion component. The posterior
+mean of \(p\) is `r round(g_low_mean, 4)`, about `r round(g_low_mean / jd_params$low$p, 1)` times its
+true value: with only `r sum(Y_low)` jumps in the data, the \(\mathrm{Beta}(1,9)\) prior, whose
+mean is 0.1, has a strong influence. Because the posterior of \(p\) is right-skewed,
+its median (`r round(g_low_median, 4)`) is a better point summary than its mean, but it
+is still well above the truth. This behavior
+is not a computational artifact but a direct consequence of the limited
+information in the data: when only a handful of observations could plausibly be
+jumps, the posterior cannot sharply distinguish between the two mixture
+components. Nevertheless, the Bayesian framework still yields coherent and
+interpretable summaries of uncertainty, providing a transparent quantification
+of precisely how weakly the data inform the jump component in this setting.
+
+Overall, the Gibbs sampler performs comparably to the MLE and EM approaches in
+well-identified regimes while offering the additional advantage of full
+posterior uncertainty quantification. Its behavior in the low-jump regime also
+reinforces a key theme observed throughout the analysis: accurate estimation of
+jump characteristics fundamentally requires a sufficient number of jump events,
+regardless of the estimation method employed.
+
+### Sensitivity to the prior on the jump probability
+
+Since the prior on \(p\) matters in the low regime, we rerun the Gibbs sampler on
+the same low-regime data under two other priors: \(\mathrm{Beta}(1,49)\), whose
+mean 0.02 is close to the true value, and the uniform \(\mathrm{Beta}(1,1)\), which
+expresses no preference for rare jumps. All other priors are unchanged.
+
+```{r gibbs-prior-sensitivity}
+## Low regime: Gibbs sampler under three priors for p
+set.seed(2024)
+prior_p_list <- list(
+  "Beta(1, 9): mean 0.10"  = c(a = 1, b = 9),
+  "Beta(1, 49): mean 0.02" = c(a = 1, b = 49),
+  "Beta(1, 1): uniform"    = c(a = 1, b = 1)
+)
+
+## Under a flat prior the sampler occasionally wanders to large p (the "fake jump" region),
+## so each prior gets 4 long chains, and their agreement is checked with the R-hat statistic.
+split_rhat <- function(chains) {
+  halves <- unlist(lapply(chains, function(x) { n <- floor(length(x) / 2)
+    list(x[1:n], x[(n + 1):(2 * n)]) }), recursive = FALSE)
+  n <- length(halves[[1]]); B <- n * var(sapply(halves, mean)); W <- mean(sapply(halves, var))
+  sqrt(((n - 1) / n * W + B / n) / W)
+}
+sens_chains <- lapply(prior_p_list, function(hp) {
+  lapply(1:4, function(k) gibbs_jd(R_low, n_iter = 40000, burnin = 5000, thin = 10, hyper_p = hp)$draws)
+})
+sens_draws <- lapply(sens_chains, function(ch) do.call(rbind, ch))
+
+prior_sens <- do.call(rbind, lapply(names(sens_draws), function(nm) {
+  d <- sens_draws[[nm]]
+  data.frame(
+    `Prior for p`      = nm,
+    `p median`         = median(d[, "p"]),
+    `p mean`           = mean(d[, "p"]),
+    `p 2.5%`           = unname(quantile(d[, "p"], 0.025)),
+    `p 97.5%`          = unname(quantile(d[, "p"], 0.975)),
+    `mu_J median`      = median(d[, "mu_J"]),
+    `sigma_J median`   = median(d[, "sigma_J"]),
+    `R-hat (p)`        = split_rhat(lapply(sens_chains[[nm]], function(x) x[, "p"])),
+    check.names = FALSE, row.names = NULL
+  )
+}))
+
+knitr::kable(prior_sens, digits = 4, booktabs = TRUE,
+             caption = paste0("Low regime (true p = 0.01, mu_J = -0.015, sigma_J = 0.01; ",
+                              sum(Y_low), " jumps in the data): posterior of the jump ",
+                              "parameters under three priors for p."))
+
+sens_p_median <- setNames(prior_sens$`p median`, c("b9", "b49", "unif"))
+```
+
+Each row pools four chains of 35,000 iterations after burn-in, and the R-hat
+values close to 1 show that the chains agree. The prior matters, but less than
+the width of the posterior. The posterior median of \(p\) is
+`r round(sens_p_median["b49"], 4)` under \(\mathrm{Beta}(1,49)\),
+`r round(sens_p_median["b9"], 4)` under \(\mathrm{Beta}(1,9)\) and
+`r round(sens_p_median["unif"], 4)` under the uniform prior, and the upper end of the
+95\% credible interval rises from `r round(prior_sens[2, "p 97.5%"], 3)` to
+`r round(prior_sens[1, "p 97.5%"], 3)` to `r round(prior_sens[3, "p 97.5%"], 3)`. Even
+with no preference for rare jumps, these data favour a jump probability of a few
+percent, above the true 1\%: with about `r sum(Y_low)` jumps among `r n_obs` days,
+the likelihood cannot distinguish a few large jumps from more frequent small ones.
+Under the uniform prior the sampler also makes occasional excursions to much larger
+values of \(p\), where the "jump" component describes ordinary days; short runs can
+miss or overweight these excursions, which is why long, multiple chains are needed
+here. In this regime the data identify the diffusion part of the model well but say
+little about the jump frequency, and a Bayesian estimate of \(p\) should be reported
+together with the prior it depends on.
+
+## Bayesian estimation with Stan
+
+The jump-diffusion specification
+\[
+R_t = \mu + \sigma \varepsilon_t + Y_t Z_t,\qquad t = 1,\dots,T,
+\]
+with
+\[
+\varepsilon_t \sim \mathcal{N}(0,1), \quad
+Y_t \sim \mathrm{Bernoulli}(p), \quad
+Z_t \sim \mathcal{N}(\mu_J,\sigma_J^2),
+\]
+implies that the marginal distribution of each return is a two-component
+Gaussian mixture,
+\[
+R_t \mid \theta \sim (1-p)\,\mathcal{N}(\mu,\sigma^2)
+\;+\;
+p\,\mathcal{N}\bigl(\mu + \mu_J,\;\sigma^2 + \sigma_J^2\bigr),
+\]
+where
+\[
+\theta = (\mu,\sigma,p,\mu_J,\sigma_J)
+\]
+denotes the vector of unknown model parameters. The corresponding
+observed-data likelihood for a sample $R_1,\dots,R_T$ is
+\[
+L(\theta;R_{1:T})
+=
+\prod_{t=1}^T
+\left[
+(1-p)\,\phi(R_t;\mu,\sigma^2)
++
+p\,\phi\bigl(R_t;\mu+\mu_J,\sigma^2+\sigma_J^2\bigr)
+\right],
+\]
+with $\phi(\cdot;m,v)$ the normal density with mean $m$ and variance $v$.
+Rather than introducing latent indicators $Y_t$ explicitly, the Stan
+implementation works directly with this marginalized mixture likelihood.
+
+\paragraph{Bayesian formulation.}
+In the Bayesian framework, the unknown parameters $\theta$ are treated
+as random and assigned prior distributions. We use exactly the same
+priors as in the Gibbs sampler,
+\[
+p \sim \mathrm{Beta}(1,9),\qquad
+\mu,\ \mu_J \sim \mathcal{N}(0,\,0.05^2),
+\]
+\[
+\sigma^2 \sim \mathrm{Inv{\text-}Gamma}(2,\,2\times10^{-4}),\qquad
+\sigma_J^2 \sim \mathrm{Inv{\text-}Gamma}(2,\,2\times10^{-4}),
+\]
+so the Stan model is parameterized by the variances $\sigma^2$ and
+$\sigma_J^2$, and $\sigma$ and $\sigma_J$ are reported as their square
+roots. The two Bayesian methods therefore target the same posterior
+distribution and differ only in the sampling algorithm. This makes the
+comparison informative: any difference between Gibbs and Stan beyond
+Monte Carlo error would point to an error in one of the two
+implementations.
+
+Given these priors, the posterior density is
+\[
+\pi(\theta \mid R_{1:T})
+\;\propto\;
+L(\theta;R_{1:T})\,
+\pi(\mu)\,\pi(\sigma^2)\,\pi(p)\,\pi(\mu_J)\,\pi(\sigma_J^2),
+\]
+and forms the basis for Bayesian inference on both point estimates and
+uncertainty.
+
+\paragraph{Stan implementation and sampling.}
+In the Stan code, the mixture likelihood contribution of each
+observation is evaluated using the numerically stable \texttt{log\_mix}
+function. For each $t$,
+\[
+\log f(R_t \mid \theta)
+=
+\log\Bigl[
+(1-p)\,\phi(R_t;\mu,\sigma^2)
++
+p\,\phi\bigl(R_t;\mu+\mu_J,\sigma^2+\sigma_J^2\bigr)
+\Bigr]
+\]
+is computed internally as
+\[
+\texttt{target += log\_mix}\bigl(
+p,\,
+\log \phi(R_t;\mu+\mu_J,\sigma^2+\sigma_J^2),\,
+\log \phi(R_t;\mu,\sigma^2)
+\bigr),
+\]
+which avoids numerical underflow when one component has very small
+weight or extremely low density for a given $R_t$. Summing these terms
+over $t=1,\dots,T$ yields the log-likelihood, to which the (log-)priors
+for $\theta$ are added in the \texttt{model} block.
+
+Stan then uses Hamiltonian Monte Carlo with the No-U-Turn Sampler
+(NUTS) to draw approximate samples from the joint posterior
+$\pi(\theta \mid R_{1:T})$. The sampler operates on the continuous
+parameter vector $\theta$ only; no discrete latent indicators $Y_t$ are
+introduced, which is crucial because Stan does not support discrete
+parameters. After discarding warmup iterations used for adaptation, the
+remaining draws
+\[
+\{\theta^{(s)}\}_{s=1}^S
+\]
+provide Monte Carlo approximations to posterior expectations and
+uncertainty measures. In particular, posterior means and standard
+deviations for each component of $\theta$ are reported as Bayesian
+analogues of point estimates and standard errors, together with
+convergence diagnostics such as the potential scale reduction factor
+$\widehat{R}$ and effective sample sizes.
+
+```{r stan-jd-setup, message=FALSE, warning=FALSE}
+# Stan implementation for the jump–diffusion mixture model
+# Requires: R_low, R_medium, R_high already defined
+
+# If needed:
+# install.packages("rstan")
+library(rstan)
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+
+stan_code_jd <- "
+data {
+  int<lower=1> T;           // number of observations
+  vector[T] R;              // returns
+}
+parameters {
+  real mu;                  // drift
+  real<lower=0> sigma2;     // diffusion variance
+  real<lower=0, upper=1> p; // jump probability
+  real mu_J;                // jump mean
+  real<lower=0> sigma_J2;   // jump variance
+}
+model {
+  real sigma   = sqrt(sigma2);
+  real sd_jump = sqrt(sigma2 + sigma_J2);
+
+  // -- Priors: identical to the Gibbs sampler --
+  mu       ~ normal(0, 0.05);
+  mu_J     ~ normal(0, 0.05);
+  sigma2   ~ inv_gamma(2, 2e-4);
+  sigma_J2 ~ inv_gamma(2, 2e-4);
+  p        ~ beta(1, 9);          // prior mean 0.10, favors rare jumps
+
+  // -- Likelihood: 2-component Gaussian mixture --
+  for (t in 1:T) {
+    // Mixture: p * jump + (1 - p) * no-jump
+    target += log_mix(p,
+                      normal_lpdf(R[t] | mu + mu_J, sd_jump),
+                      normal_lpdf(R[t] | mu, sigma));
+  }
+}
+generated quantities {
+  // Standard deviations, for reporting on the same scale as the other methods
+  real sigma   = sqrt(sigma2);
+  real sigma_J = sqrt(sigma_J2);
+}
+"
+
+# Compile the Stan model (reused in the real-data section)
+jd_stan_model <- stan_model(model_code = stan_code_jd)
+
+# Helper to build Stan data list from a return series
+make_stan_data <- function(R) {
+  list(
+    T = length(R),
+    R = as.vector(R)
+  )
+}
+
+# Fit for each regime (you can comment out some of these while testing)
+fit_stan_low <- sampling(
+  jd_stan_model,
+  data   = make_stan_data(R_low),
+  chains = 4,
+  iter   = 4000,
+  warmup = 2000,
+  seed   = 2025
+)
+
+fit_stan_medium <- sampling(
+  jd_stan_model,
+  data   = make_stan_data(R_medium),
+  chains = 4,
+  iter   = 4000,
+  warmup = 2000,
+  seed   = 2025
+)
+
+fit_stan_high <- sampling(
+  jd_stan_model,
+  data   = make_stan_data(R_high),
+  chains = 4,
+  iter   = 4000,
+  warmup = 2000,
+  seed   = 2025
+)
+
+# Posterior summaries and convergence diagnostics
+pars_jd   <- c("mu", "sigma", "p", "mu_J", "sigma_J")
+stan_fits <- list(low = fit_stan_low, medium = fit_stan_medium, high = fit_stan_high)
+
+summary_stan <- do.call(rbind, lapply(names(stan_fits), function(reg) {
+  s <- rstan::summary(stan_fits[[reg]], pars = pars_jd,
+                      probs = c(0.025, 0.5, 0.975))$summary
+  data.frame(
+    regime      = reg,
+    parameter   = pars_jd,
+    true_value  = unlist(jd_params[[reg]])[pars_jd],
+    post_mean   = s[, "mean"],
+    post_median = s[, "50%"],
+    post_sd     = s[, "sd"],
+    ci_2.5      = s[, "2.5%"],
+    ci_97.5     = s[, "97.5%"],
+    n_eff       = round(s[, "n_eff"]),
+    Rhat        = s[, "Rhat"],
+    row.names   = NULL
+  )
+}))
+knitr::kable(summary_stan, digits = 4, booktabs = TRUE,
+             caption = "Stan posterior summaries (4 chains) with effective sample sizes and R-hat.")
+
+# Divergent transitions after warmup (should be 0)
+stan_divergences <- sapply(stan_fits, rstan::get_num_divergent)
+stan_divergences
+stan_max_rhat <- max(summary_stan$Rhat)
+```
+
+\paragraph{Conclusion.}
+The Bayesian estimation results obtained through Stan demonstrate that the
+Hamiltonian Monte Carlo approach provides a stable and effective framework for
+inferring the parameters of the jump-diffusion model across all simulation
+regimes. In the medium- and high-risk settings, the posterior distributions for
+$\mu$, $\sigma$, $p$, $\mu_J$, and $\sigma_J$ are sharply concentrated around the
+true values, confirming that Stan successfully recovers both the continuous and
+jump components of the model when the data contain sufficient jump information.
+In the low-risk regime, where jump events are rare and the mixture components
+overlap substantially, the posterior correctly reflects the corresponding
+identifiability limitations: the drift remains well estimated, and the posterior for the diffusion volatility is tight, while jump-related parameters exhibit wider posterior uncertainty. Importantly, unlike the MLE—which may suffer from singular Hessians
+or boundary estimates—Bayesian inference via NUTS remains numerically robust and
+provides full posterior uncertainty quantification without relying on resampling
+methods. Overall, the Stan implementation offers a principled and reliable
+Bayesian alternative to MLE and EM, performing comparably in well-identified
+settings while delivering more informative uncertainty assessments in difficult
+low-jump environments. The sampler reported `r sum(stan_divergences)` divergent
+transitions across the three regimes, and the largest \(\widehat{R}\) is
+`r round(stan_max_rhat, 3)`, so there is no sign of convergence problems.
+
+```{r comparison-table, echo=FALSE}
+## Comparison table computed from the fits above
+## (posterior medians for Gibbs and Stan, since the posterior of p is skewed)
+stan_median <- function(fit) {
+  rstan::summary(fit, pars = param_names, probs = 0.5)$summary[param_names, "50%"]
+}
+comparison_sim <- do.call(rbind, lapply(regimes, function(reg) {
+  data.frame(
+    Regime         = reg,
+    Parameter      = param_names,
+    True           = unlist(jd_params[[reg]])[param_names],
+    MLE            = fit_list[[reg]]$par_theta[param_names],
+    EM             = fit_em_list[[reg]]$par_theta[param_names],
+    `Gibbs Median` = apply(gibbs_list[[reg]]$draws, 2, median)[param_names],
+    `Stan Median`  = stan_median(stan_fits[[reg]]),
+    check.names = FALSE, row.names = NULL)
+}))
+knitr::kable(comparison_sim, digits = 4, booktabs = TRUE, row.names = FALSE,
+             caption = "Comparison of Jump-Diffusion Parameter Estimates Across Four Estimation Methods (Gibbs and Stan: posterior medians).")
+
+## Quantities used in the text below
+low_p_ratio <- with(subset(comparison_sim, Regime == "low" & Parameter == "p"),
+                    c(gibbs = `Gibbs Median` / True, stan = `Stan Median` / True))
+```
+
+\paragraph{Comparison of Estimation Methods.}
+Across the three simulation regimes, the four estimation approaches—MLE,
+EM, Gibbs sampling, and Stan—exhibit distinct behaviors that reflect their
+underlying inferential philosophies and numerical properties. In the
+medium- and high-risk regimes, where jump events are frequent enough to
+provide clear separation between mixture components, all methods recover
+the true parameters with high accuracy. The diffusion parameters $(\mu,
+\sigma)$ are estimated almost identically across MLE, EM, Gibbs, and Stan,
+and the jump parameters $(p, \mu_J, \sigma_J)$ are also well identified,
+with only modest differences attributable to sampling variability and
+prior smoothing in the Bayesian methods. The two Bayesian methods use
+the same priors and target the same posterior, so their posterior
+medians should agree up to Monte Carlo error, and they do.
+
+The low-risk regime illustrates the core challenge: when jump events are
+rare, the mixture likelihood becomes weakly identified. MLE and EM, which
+maximize the same likelihood, give the same estimates: on this dataset the
+jump probability is close to its true value, but the jump-size standard
+deviation collapses toward zero and the bootstrap standard error of $p$ is
+more than twenty-five times the estimate, consistent with the well-known
+pathology of finite-mixture likelihoods with tiny component weights. The
+Bayesian methods (Gibbs and Stan) avoid the collapse of $\sigma_J$, but their
+posterior medians of $p$ are `r round(low_p_ratio["gibbs"], 1)` and
+`r round(low_p_ratio["stan"], 1)` times the truth, because the prior has
+a strong influence when only a handful of jumps are observed (see the
+prior-sensitivity analysis above); their posterior
+standard deviations correctly inflate to reflect the lack of information. In
+this regime no method recovers the jump parameters reliably: the limiting
+factor is the information in the data, not the estimation method.
+
+Overall, the comparison reveals that: (i) in well-identified regimes, all
+methods perform similarly; (ii) in weak-signal regimes, no method recovers
+the jump parameters reliably: MLE and EM agree but can place $\sigma_J$ on the
+boundary, the Bayesian estimates of $p$ are pulled toward the prior, and the
+Bayesian approaches (Gibbs, Stan) give the most honest picture of the
+uncertainty; and (iii) careful implementation matters as much as the choice
+of method: with a correctly specified EM algorithm and Gibbs sampler and a
+robust optimizer for the MLE, all four methods agree whenever the data
+contain enough jumps.
+
+## Monte Carlo study: performance over repeated samples
+
+The comparison above uses one simulated dataset per regime, and a single
+dataset can be lucky or unlucky. To see how the estimators behave on
+average, we simulate 100 new datasets per regime from the same model
+and apply the MLE, the EM algorithm and the Gibbs sampler to each (Stan is
+left out to keep the computing time reasonable; it targets the same
+posterior as the Gibbs sampler). The Gibbs point estimate is the posterior
+median. For each regime and method we report the median of
+\(\hat p / p\) (1 means unbiased in the median), the median absolute error
+of \(\hat p\) relative to \(p\), the medians of \(\hat\mu_J/\mu_J\) and
+\(\hat\sigma_J/\sigma_J\), the share of datasets in which the estimate of
+\(\sigma_J\) collapsed (below 10\% of its true value), and, for the Gibbs
+sampler, the share of datasets in which the 95\% credible interval for
+\(p\) contains the true value.
+
+```{r monte-carlo, cache=TRUE}
+## Monte Carlo study: n_mc datasets per regime; MLE, EM and Gibbs on each.
+## Each dataset has its own seed, so results do not depend on the number of cores.
+## (cache = TRUE: re-knitting does not recompute this chunk unless its code changes)
+n_mc <- 100
+
+mc_one <- function(reg, r) {
+  set.seed(100000 * match(reg, c("low", "medium", "high")) + r)
+  par <- jd_params[[reg]]
+  R <- simulate_jump_diffusion(n_obs, par$mu, par$sigma, par$p, par$mu_J, par$sigma_J)$R
+
+  mle <- fit_jd_mle_simple(R)
+  em  <- fit_em_jd(R)
+  d   <- gibbs_jd(R, n_iter = 4000, burnin = 1000, thin = 3)$draws
+  ci  <- quantile(d[, "p"], c(0.025, 0.975))
+
+  est <- rbind(MLE   = mle$par_theta[param_names],
+               EM    = em$par_theta[param_names],
+               Gibbs = apply(d, 2, median)[param_names])
+  data.frame(regime = reg, rep = r, method = rownames(est), est,
+             logLik  = c(mle$logLik, em$logLik, NA),
+             covered = c(NA, NA, ci[1] <= par$p && par$p <= ci[2]),
+             row.names = NULL)
+}
+
+jobs <- expand.grid(r = seq_len(n_mc), reg = c("low", "medium", "high"),
+                    stringsAsFactors = FALSE)
+
+## Run in parallel (works on Windows, macOS and Linux)
+n_cores <- max(1L, parallel::detectCores() - 1L)
+cl <- parallel::makeCluster(n_cores)
+fun_names <- Filter(function(nm) is.function(get(nm)), ls())
+parallel::clusterExport(cl, c(fun_names, "jobs", "jd_params", "n_obs", "param_names"),
+                        envir = environment())
+mc_raw <- do.call(rbind, parallel::parLapply(cl, seq_len(nrow(jobs)),
+                                             function(i) mc_one(jobs$reg[i], jobs$r[i])))
+parallel::stopCluster(cl)
+```
+
+```{r monte-carlo-summary}
+options(knitr.kable.NA = "-")
+mc_summary <- do.call(rbind, lapply(c("low", "medium", "high"), function(reg) {
+  tp <- jd_params[[reg]]
+  do.call(rbind, lapply(c("MLE", "EM", "Gibbs"), function(m) {
+    d <- mc_raw[mc_raw$regime == reg & mc_raw$method == m, ]
+    data.frame(
+      Regime                  = reg,
+      Method                  = m,
+      `median p-hat/p`        = median(d$p / tp$p),
+      `median abs. error / p` = median(abs(d$p - tp$p)) / tp$p,
+      `median mu_J-hat/mu_J`  = median(d$mu_J / tp$mu_J),
+      `median sigma_J-hat/sigma_J` = median(d$sigma_J / tp$sigma_J),
+      `sigma_J collapsed`     = mean(d$sigma_J < 0.1 * tp$sigma_J),
+      `95% coverage of p`     = if (m == "Gibbs") mean(d$covered) else NA,
+      check.names = FALSE, row.names = NULL
+    )
+  }))
+}))
+knitr::kable(mc_summary, digits = 2, booktabs = TRUE,
+             caption = paste0("Monte Carlo study: ", n_mc,
+                              " simulated datasets per regime (T = ", n_obs, ")."))
+
+## Quantities used in the text below
+mc_val <- function(reg, m, col) mc_summary[mc_summary$Regime == reg & mc_summary$Method == m, col]
+ll_wide  <- reshape(mc_raw[mc_raw$method != "Gibbs", c("regime", "rep", "method", "logLik")],
+                    idvar = c("regime", "rep"), timevar = "method", direction = "wide")
+em_gap   <- ll_wide$logLik.MLE - ll_wide$logLik.EM
+share_em_matches <- mean(abs(em_gap) < 0.01)
+```
+
+The MLE and EM reach the same maximum of the likelihood (within 0.01 in
+log-likelihood) in `r round(100 * share_em_matches)`\% of all datasets, which
+confirms that the corrected EM algorithm maximizes the jump-diffusion likelihood.
+In the medium and high regimes all three estimators are close to the truth in
+the median, with \(\hat p / p\) between
+`r round(min(mc_summary[mc_summary$Regime != "low", "median p-hat/p"]), 2)` and
+`r round(max(mc_summary[mc_summary$Regime != "low", "median p-hat/p"]), 2)`.
+The Gibbs 95\% credible intervals contain the true \(p\) in
+`r round(100 * mc_val("medium", "Gibbs", "95% coverage of p"))`\% of the
+medium-regime datasets, close to the nominal 95\%, but only in
+`r round(100 * mc_val("high", "Gibbs", "95% coverage of p"))`\% of the
+high-regime datasets. The likely cause is the prior on the jump variance: the
+\(\mathrm{Inv{\text-}Gamma}(2,\,2\times10^{-4})\) prior favours small values of
+\(\sigma_J^2\), and the Gibbs estimates of \(\sigma_J\) are
+`r round(mc_val("medium", "Gibbs", "median sigma_J-hat/sigma_J"), 2)` and
+`r round(mc_val("high", "Gibbs", "median sigma_J-hat/sigma_J"), 2)` times the
+truth in the medium and high regimes, against
+`r round(mc_val("medium", "MLE", "median sigma_J-hat/sigma_J"), 2)` and
+`r round(mc_val("high", "MLE", "median sigma_J-hat/sigma_J"), 2)` for the MLE.
+A smaller \(\sigma_J\) makes jumps harder to tell apart from ordinary days, so
+fewer days are attributed to jumps and \(p\) is underestimated as well.
+
+The low regime behaves differently, and the repeated samples show that the
+single-dataset results above were typical rather than unlucky. The MLE and EM
+underestimate \(p\) (median ratio
+`r round(mc_val("low", "MLE", "median p-hat/p"), 2)`), their median absolute
+error is `r round(100 * mc_val("low", "MLE", "median abs. error / p"))`\% of the
+true value, and the estimate of \(\sigma_J\) collapses toward zero in
+`r round(100 * mc_val("low", "MLE", "sigma_J collapsed"))`\% of the datasets.
+The Gibbs sampler never collapses, because the same inverse-gamma prior keeps
+\(\sigma_J^2\) away from zero, but its estimate of \(p\) is pulled upward toward
+the prior (median ratio `r round(mc_val("low", "Gibbs", "median p-hat/p"), 2)`),
+while its credible intervals contain the true value in
+`r round(100 * mc_val("low", "Gibbs", "95% coverage of p"))`\% of the datasets.
+
+The prior on the jump variance is therefore a trade-off: it stabilizes
+estimation when jumps are rare and introduces a modest downward bias when they
+are frequent. More generally, with around 20 jumps in 2000 days the frequentist
+estimates are noisy and the Bayesian ones depend on the prior; the uncertainty
+is a property of the data, and the most useful thing an estimator can do is to
+report it honestly.
+
+\section{Real-World Application of the Jump-Diffusion Estimation Methods}
+
+Having established the behavior of MLE, EM, Gibbs sampling, and Stan through a controlled simulation study, we now turn to real financial return data to examine whether the same patterns hold in practice. We select three assets representing low-, medium-, and high-risk regimes:
+\begin{itemize}
+  \item \textbf{JNJ (low risk)} - stable, defensive equity,
+  \item \textbf{SPY (medium risk)} - broad market index,
+  \item \textbf{TSLA (high risk)} - highly volatile growth stock.
+\end{itemize}
+Daily log-returns from 2015-2024 are used to ensure a long sample with sufficient jump events for reliable estimation.
+
+All four estimation methods were applied using the same procedures validated in the simulation study. The resulting parameter estimates are summarized in the comparison table.
+
+```{r check-internet, include=FALSE}
+## The real-data section needs to download prices from Yahoo Finance.
+has_internet <- !inherits(try(quantmod::getSymbols("SPY", from = "2024-12-02", to = "2024-12-06",
+                                                    auto.assign = FALSE), silent = TRUE), "try-error")
+```
+
+```{r real-data, eval=has_internet}
+library(rstan)
+library(quantmod)
+library(dplyr)
+
+## ----------------------
+## 1. Setup: tickers and date range
+## ----------------------
+tickers <- c(low = "JNJ",
+             medium = "SPY",
+             high = "TSLA")
+
+start_date <- "2015-01-01"
+end_date   <- "2024-12-31"
+
+## ----------------------
+## 2. Download and merge adjusted prices
+## ----------------------
+get_prices <- function(sym) {
+  Ad(getSymbols(sym, from = start_date, to = end_date, auto.assign = FALSE))
+}
+
+px_list <- lapply(tickers, get_prices)
+
+# Merge on dates; this creates an xts with all columns
+all_px <- do.call(merge, px_list)
+
+# Give nice column names (low, medium, high)
+colnames(all_px) <- names(tickers)
+
+# Keep only dates where ALL three tickers have data
+all_px_cc <- na.omit(all_px)
+
+## ----------------------
+## 3. Compute log-returns on the common period
+## ----------------------
+all_ret <- diff(log(all_px_cc))
+
+# Drop the first row created by diff (it will be NA)
+all_ret <- all_ret[complete.cases(all_ret), ]
+
+# Build a list of numeric return vectors for each regime
+returns_list <- list(
+  low    = as.numeric(all_ret[, "low"]),
+  medium = as.numeric(all_ret[, "medium"]),
+  high   = as.numeric(all_ret[, "high"])
+)
+
+## ----------------------
+## 4. Quick plots: prices and returns
+## ----------------------
+par(mfrow = c(2, 3), mar = c(3, 4, 3, 1))
+
+# Price paths
+plot(all_px_cc[, "low"],    main = paste0("Price: ", tickers["low"]),
+     xlab = "", ylab = "Price", col = "black")
+plot(all_px_cc[, "medium"], main = paste0("Price: ", tickers["medium"]),
+     xlab = "", ylab = "Price", col = "black")
+plot(all_px_cc[, "high"],   main = paste0("Price: ", tickers["high"]),
+     xlab = "", ylab = "Price", col = "black")
+
+# Return series
+plot(all_ret[, "low"],    main = paste0("Returns: ", tickers["low"]),
+     xlab = "", ylab = "Log-return", col = "black")
+plot(all_ret[, "medium"], main = paste0("Returns: ", tickers["medium"]),
+     xlab = "", ylab = "Log-return", col = "black")
+plot(all_ret[, "high"],   main = paste0("Returns: ", tickers["high"]),
+     xlab = "", ylab = "Log-return", col = "black")
+
+par(mfrow = c(1, 1))
+
+## ----------------------
+## 5. Summary table (no NA problems)
+## ----------------------
+summary_df <- do.call(
+  rbind,
+  lapply(names(returns_list), function(reg) {
+    r <- returns_list[[reg]]
+    r <- r[is.finite(r)]  # extra safety, should already be fine
+
+    data.frame(
+      regime   = reg,
+      ticker   = tickers[reg],
+      n        = length(r),
+      mean     = mean(r, na.rm = TRUE),
+      sd       = sd(r, na.rm = TRUE),
+      min      = min(r, na.rm = TRUE),
+      q25      = quantile(r, 0.25, na.rm = TRUE),
+      median   = median(r, na.rm = TRUE),
+      q75      = quantile(r, 0.75, na.rm = TRUE),
+      max      = max(r, na.rm = TRUE)
+    )
+  })
+)
+
+summary_df
+
+
+
+# Plot log-price and returns for each ticker
+par(mfrow = c(3, 2), mar = c(4, 4, 3, 1))
+for (reg in names(tickers)) {
+  symbol <- tickers[reg]
+  x <- getSymbols(symbol, from = start_date, to = end_date, auto.assign = FALSE)
+  px <- Ad(x)
+  ts.plot(log(px), main = paste0(symbol, " (", reg, ") - log price"),
+          ylab = "log(price)", xlab = "Time")
+  
+  r <- returns_list[[reg]]
+  ts.plot(r, main = paste0(symbol, " (", reg, ") - log returns"),
+          ylab = "return", xlab = "Time")
+}
+par(mfrow = c(1, 1))
+
+## ================================================
+## 2.-4. MLE, EM and Gibbs sampler
+## ================================================
+## The real-data fits use the same (corrected) functions defined in the
+## simulation study above: fit_jd_mle_simple(), fit_em_jd() and gibbs_jd().
+param_names <- c("mu", "sigma", "p", "mu_J", "sigma_J")
+
+## ================================================
+## 5. Stan model: the model compiled in the simulation study (jd_stan_model)
+##    is reused here, with the same priors as the Gibbs sampler.
+## ================================================
+
+## ================================================
+## 6. Fit all four methods on each regime
+## ================================================
+regimes <- names(tickers)
+
+fit_results <- lapply(regimes, function(reg) {
+  R_reg <- returns_list[[reg]]
+  
+  # MLE
+  fit_mle <- fit_jd_mle_simple(R_reg)
+  
+  # EM
+  fit_em  <- fit_em_jd(R_reg)
+  
+  # Gibbs
+  gibbs_fit <- gibbs_jd(R_reg, n_iter = 6000, burnin = 2000, thin = 5)
+  gibbs_draws <- gibbs_fit$draws
+  gibbs_median <- apply(gibbs_draws, 2, median)
+  
+  # Stan
+  fit_stan <- sampling(
+    jd_stan_model,
+    data   = make_stan_data(R_reg),
+    chains = 4,
+    iter   = 3000,
+    warmup = 1500,
+    seed   = 2025,
+    refresh = 0
+  )
+  stan_sum <- summary(fit_stan, pars = param_names, probs = 0.5)$summary
+  stan_median <- stan_sum[, "50%"]
+  names(stan_median) <- rownames(stan_sum)
+  
+  list(
+    mle   = fit_mle$par_theta,
+    em    = fit_em$par_theta,
+    gibbs = gibbs_median[param_names],
+    stan  = stan_median[param_names],
+    stan_divergences = rstan::get_num_divergent(fit_stan)
+  )
+})
+names(fit_results) <- regimes
+
+## ================================================
+## 7. Final comparison table
+## ================================================
+comparison_table <- do.call(
+  rbind,
+  lapply(regimes, function(reg) {
+    mats <- fit_results[[reg]]
+    data.frame(
+      regime   = reg,
+      ticker   = tickers[reg],
+      parameter = param_names,
+      MLE      = round(as.numeric(mats$mle[param_names]),   5),
+      EM       = round(as.numeric(mats$em[param_names]),    5),
+      Gibbs    = round(as.numeric(mats$gibbs[param_names]), 5),
+      Stan     = round(as.numeric(mats$stan[param_names]),  5),
+      row.names = NULL
+    )
+  })
+)
+
+print(comparison_table)   # Gibbs and Stan: posterior medians
+
+# Divergent transitions in the Stan fits (should be 0)
+sapply(fit_results, function(x) x$stan_divergences)
+```
+
+\subsection*{Conclusions from Real-World Estimation}
+
+Across all three assets, we observe a high degree of agreement between the four estimation methods. Unlike the simulated low-risk regime, where extremely rare jumps made the jump parameters hard to estimate, the real data produce much larger estimated jump probabilities, and all estimators find the same solution. Several key conclusions emerge:
+\begin{enumerate}
+  \item \textbf{Low-risk asset (JNJ).} 
+  The diffusion volatility is small (\(\sigma \approx 0.008\)), the estimated jump probability is about 10\%, and estimated jump sizes are small and negative. All methods agree closely.
+
+  \item \textbf{Medium-risk asset (SPY).}
+  Volatility is at a typical market level (\(\sigma \approx 0.007\)), with jump probabilities around 16\%. The jump mean is slightly negative, in line with downside market shocks.
+
+  \item \textbf{High-risk asset (TSLA).}
+  Volatility is extremely high (\(\sigma \approx 0.022\)), and the estimated jump probability is very large (\(p \approx 0.25\)). Jumps are roughly symmetric (\(\mu_J \approx 0\)), consistent with both large upward and downward moves.
+\end{enumerate}
+
+Across all assets, MLE, EM, Gibbs, and Stan deliver nearly identical point estimates, so the four methods compute the same thing reliably on real data. Agreement between methods does not, however, show that the model describes the data well; that question is taken up next.
+
+A caution on interpretation. Estimated jump probabilities of this size, with average jumps comparable to ordinary daily moves, do not describe rare jumps. Because the model treats days as independent, its jump component also absorbs fat tails and volatility clustering (alternating calm and turbulent periods), which are pronounced in daily stock returns.
+
+\paragraph{A test of independent jumps.}
+The model can be checked directly. At the EM estimates we compute, for every day, the probability that it contains a jump given its return, \(P(Y_t = 1 \mid R_t)\), and flag the days on which this probability exceeds one half. If jumps occur independently with a constant probability, as the model assumes, the flagged days should be spread evenly over time. We divide the sample into years (blocks of 250 days for the simulated data) and apply a chi-square test of an even spread, with the expected counts proportional to the number of days in each year and the p-value computed by simulation. We first apply the test to the simulated data, where jumps are independent by construction, to confirm that it works when the model is true: once to the single dataset of each regime, and once to each of the 100 Monte Carlo datasets per regime, to check that it rejects in about 5\% of cases.
+
+```{r flag-test-simulated}
+## Posterior probability that day t contains a jump, P(Y_t = 1 | R_t), given parameters theta
+jump_prob <- function(theta, R) {
+  log_f0 <- log1p(-theta["p"]) + dnorm(R, theta["mu"], theta["sigma"], log = TRUE)
+  log_f1 <- log(theta["p"]) + dnorm(R, theta["mu"] + theta["mu_J"],
+                                    sqrt(theta["sigma"]^2 + theta["sigma_J"]^2), log = TRUE)
+  1 / (1 + exp(log_f0 - log_f1))
+}
+
+## Chi-square test that flagged days are spread evenly across blocks (years)
+flag_test <- function(flags, block) {
+  flags[is.na(flags)] <- FALSE
+  counts <- tapply(flags, block, sum)
+  n_days <- tapply(flags, block, length)
+  if (sum(counts) < 2) return(c(flagged = sum(counts), p_value = NA))
+  test <- suppressWarnings(chisq.test(counts, p = n_days / sum(n_days),
+                                      simulate.p.value = TRUE, B = 4999))
+  c(flagged = sum(counts), p_value = test$p.value)
+}
+
+sim_regimes <- c("low", "medium", "high")
+sim_block   <- rep(seq_len(n_obs / 250), each = 250)   # 8 "years" of 250 days
+
+## (a) The single simulated dataset of each regime, at its EM estimates
+set.seed(321)
+sim_flag_test <- t(sapply(sim_regimes, function(reg) {
+  flag_test(jump_prob(fit_em_list[[reg]]$par_theta, sim_jd[[reg]]$R) > 0.5, sim_block)
+}))
+
+## (b) The Monte Carlo datasets: regenerate each with its seed, use its EM estimates
+mc_em <- mc_raw[mc_raw$method == "EM", ]
+mc_flag_p <- sapply(seq_len(nrow(mc_em)), function(i) {
+  reg <- mc_em$regime[i]
+  r   <- mc_em$rep[i]
+  set.seed(100000 * match(reg, sim_regimes) + r)       # same seed as in the Monte Carlo study
+  par <- jd_params[[reg]]
+  R <- simulate_jump_diffusion(n_obs, par$mu, par$sigma, par$p, par$mu_J, par$sigma_J)$R
+  theta <- unlist(mc_em[i, param_names])
+  flag_test(jump_prob(theta, R) > 0.5, sim_block)["p_value"]
+})
+mc_reject <- tapply(mc_flag_p < 0.05, mc_em$regime, mean, na.rm = TRUE)[sim_regimes]
+
+sim_flag_table <- data.frame(
+  Data                    = paste("Simulated,", sim_regimes, "regime"),
+  `Flagged days`          = sim_flag_test[, "flagged"],
+  `p-value`               = format.pval(sim_flag_test[, "p_value"], digits = 2, eps = 0.001),
+  `Rejection rate at 5% over 100 datasets` = round(as.numeric(mc_reject), 2),
+  check.names = FALSE, row.names = NULL)
+knitr::kable(sim_flag_table, booktabs = TRUE,
+             caption = "Test of an even spread of flagged jump days: simulated data (independent jumps).")
+```
+
+```{r real-jump-prob, eval=has_internet, fig.height=7}
+## The same test on the real data, with calendar years as blocks
+ret_dates <- zoo::index(all_ret)
+jump_prob_list <- lapply(regimes, function(reg) jump_prob(fit_results[[reg]]$em, returns_list[[reg]]))
+names(jump_prob_list) <- regimes
+
+par(mfrow = c(3, 1), mar = c(3, 4, 2, 1))
+for (reg in regimes) {
+  plot(ret_dates, jump_prob_list[[reg]], type = "h", ylim = c(0, 1),
+       main = paste0(tickers[reg], ": probability that each day contains a jump"),
+       xlab = "", ylab = "P(jump | return)")
+  abline(h = 0.5, lty = 2, col = "grey40")
+}
+par(mfrow = c(1, 1))
+
+## Number of flagged days (probability > 0.5) per year
+years <- format(ret_dates, "%Y")
+flag_year <- do.call(cbind, lapply(regimes, function(reg) tapply(jump_prob_list[[reg]] > 0.5, years, sum)))
+colnames(flag_year) <- tickers[regimes]
+knitr::kable(flag_year, booktabs = TRUE,
+             caption = "Number of days per year with jump probability above 0.5.")
+
+set.seed(654)
+real_flag_test <- t(sapply(regimes, function(reg) flag_test(jump_prob_list[[reg]] > 0.5, years)))
+real_flag_table <- data.frame(
+  Data           = paste0("Real, ", tickers[regimes]),
+  `Flagged days` = real_flag_test[, "flagged"],
+  `p-value`      = format.pval(real_flag_test[, "p_value"], digits = 2, eps = 0.001),
+  check.names = FALSE, row.names = NULL)
+knitr::kable(real_flag_table, booktabs = TRUE,
+             caption = "Test of an even spread of flagged jump days: real data, 2015-2024.")
+```
+
+On the simulated data the test behaves as it should. Across the 100 Monte Carlo datasets it rejects an even spread at the 5\% level in `r round(100 * mc_reject["low"])`\%, `r round(100 * mc_reject["medium"])`\% and `r round(100 * mc_reject["high"])`\% of cases in the low, medium and high regimes, close to the nominal 5\%. On the real data it rejects for all three stocks, with simulated p-values `r if (has_internet) { if (all(real_flag_test[, "p_value"] < 0.001)) "below 0.001 in every case" else paste0("of ", paste(real_flag_table[["p-value"]], collapse = ", "), " for JNJ, SPY and TSLA") }`. The flagged days are concentrated in turbulent periods: SPY has `r if (has_internet) flag_year["2020", "SPY"]` flagged days in 2020 and `r if (has_internet) flag_year["2022", "SPY"]` in 2022, but only `r if (has_internet) flag_year["2017", "SPY"]` in 2017.
+
+\paragraph{Limitation.}
+The model assumes that days are independent and that the jump probability and the volatility are constant over time. In the simulation this holds by construction, so there the estimators behave as theory predicts: they recover the parameters when the data contain enough jumps, and their difficulties in the low regime come from the scarcity of jumps alone. In daily stock returns it does not hold: volatility moves through persistent calm and turbulent periods, and the test above detects this clearly. On real data the jump component therefore mixes genuine jumps with fat tails and volatility clustering, and its parameters should not be read as the frequency and size of jumps. Measuring jumps in real returns requires a model with time-varying volatility (for example GARCH or stochastic volatility), so that a move is judged relative to the volatility of its period; this is the natural next step for this work.
+
+\section{Interpretation for Risk Management and Portfolio Decisions}
+
+Subject to the limitation above, which matters most for the jump probability, the estimated jump-diffusion parameters have direct practical value for asset managers, risk teams, and quantitative portfolio strategists. Each parameter can be interpreted as follows:
+\begin{itemize}
+  \item \textbf{Drift \(\mu\): expected daily return.}  
+  This parameter helps calibrate expected long-term performance and risk premia. For daily data, \(\mu\) is typically small, as seen in the estimates.
+
+  \item \textbf{Diffusion volatility \(\sigma\): ordinary day-to-day variability.}  
+  This is the core input to standard risk metrics such as Value-at-Risk, volatility targeting, and mean–variance portfolio optimization. Assets with larger \(\sigma\) (e.g., TSLA) naturally call for smaller position sizes in risk-managed portfolios.
+
+  \item \textbf{Jump probability \(p\): likelihood of sudden discontinuities.}  
+  This parameter is crucial for stress testing and scenario analysis. A high \(p\) implies frequent, abrupt moves that are not captured by Gaussian models and indicates exposure to event risk, such as earnings announcements, regulatory changes, or macro shocks.
+
+  \item \textbf{Jump mean \(\mu_J\): typical direction of extreme shocks.}  
+  A negative \(\mu_J\) signals assets that are prone to downside crashes (e.g., broad market drawdowns), whereas a near-zero \(\mu_J\) reflects more symmetric jump risk. This is particularly important for identifying assets that contribute disproportionally to left-tail risk.
+
+  \item \textbf{Jump volatility \(\sigma_J\): magnitude of extreme shocks.}  
+  Larger \(\sigma_J\) indicates more severe tail behavior and fatter tails. This information can be used to distinguish assets with mild tail risk from those that experience truly extreme shocks, which is critical for designing jump-sensitive hedging and capital allocation rules.
+\end{itemize}
+
+Taken together, the jump-diffusion parameters provide a richer decomposition of risk than classical Gaussian models. Asset managers can use these estimates to:
+\begin{itemize}
+  \item adjust leverage and position sizes based on jump exposure,
+  \item design hedging strategies that specifically target tail events,
+  \item perform realistic stress tests using the estimated jump distribution,
+  \item assess whether an asset's return profile aligns with a given risk budget,
+  \item incorporate asymmetric jump risks into portfolio optimization and scenario analysis.
+\end{itemize}
+
+In summary, the real-data analysis confirms the practical relevance of jump-diffusion modeling: the estimated parameters offer actionable insight into tail risk, crash likelihood, and volatility regimes, all of which are central to modern risk management and portfolio construction.

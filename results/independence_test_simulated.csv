@@ -1,0 +1,4 @@
+"regime","datasets","testable","median_flagged_days","rejection_rate_5pct"
+"low",200,194,7,0.0154639175257732
+"medium",200,200,22,0.03
+"high",200,200,73.5,0.03

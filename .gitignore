@@ -1,0 +1,14 @@
+# R
+.Rhistory
+.RData
+.Rproj.user/
+*.rds
+!results/monte_carlo.rds
+results/mc_reps/
+results/*.log
+# Stan / knitr build files
+stan/*.rds
+report/*.tex
+report/*_files/
+report/*_cache/
+report/*.log
